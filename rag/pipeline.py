@@ -2,12 +2,14 @@
 (name, duration, details) so the UI can show exactly what happened.
 
   INGEST:  file -> load -> chunk -> embed -> store
-  QUERY:   question -> embed -> retrieve -> augment (build prompt) -> generate
+  QUERY:   question -> embed -> retrieve -> augment (build prompt) -> generate   (Claude)
+                                        \-> select (pick a sentence)              (Jev)
 """
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
-from . import chunker, embedder, generator, loader
+from . import chunker, embedder, generator, jev, loader
 from .store import VectorStore
 
 store = VectorStore()
@@ -51,9 +53,7 @@ def ingest(filename: str, data: bytes, chunk_size: int, overlap: int) -> dict:
     return {"doc_id": doc_id, "name": filename, "trace": trace.steps}
 
 
-def ask(question: str, top_k: int) -> dict:
-    trace = Trace()
-
+def retrieve(question: str, top_k: int, trace: Trace) -> list:
     t = time.perf_counter()
     qvec = embedder.embed_query(question)
     trace.step("embed_query", t, model=embedder.MODEL_NAME, dimensions=len(qvec),
@@ -64,9 +64,10 @@ def ask(question: str, top_k: int) -> dict:
     trace.step("retrieve", t, top_k=top_k, searched=len(store.chunks),
                hits=[{"doc_name": h["doc_name"], "chunk_index": h["chunk_index"],
                       "score": round(h["score"], 4), "text": h["text"]} for h in hits])
-    if not hits:
-        return {"answer": "No documents yet. Upload a file first.", "sources": [], "trace": trace.steps}
+    return hits
 
+
+def answer_with_claude(question: str, hits: list, trace: Trace) -> dict:
     t = time.perf_counter()
     prompt = generator.build_prompt(question, hits)
     trace.step("augment", t, system=generator.SYSTEM_PROMPT, prompt=prompt, prompt_chars=len(prompt))
@@ -74,7 +75,37 @@ def ask(question: str, top_k: int) -> dict:
     t = time.perf_counter()
     result = generator.generate(prompt)
     trace.step("generate", t, model=result["model"] or "(disabled)", usage=result["usage"])
+    return {"engine": "claude", "answer": result["answer"], "abstained": result.get("abstained"),
+            "ms": round(sum(s["ms"] for s in trace.steps[-2:]), 1), "usage": result["usage"]}
+
+
+def answer_with_jev(question: str, hits: list, trace: Trace) -> dict:
+    t = time.perf_counter()
+    result = jev.fast_answer(question, hits)
+    trace.step("select", t, **{k: v for k, v in result.items() if k != "answer"})
+    return {"engine": "jev", "answer": result["answer"], "abstained": result["abstained"],
+            "ms": trace.steps[-1]["ms"], "usage": result["usage"],
+            "answerable": result["answerable"], "confidence": result["confidence"]}
+
+
+def ask(question: str, top_k: int, mode: str = "claude") -> dict:
+    trace = Trace()
+    hits = retrieve(question, top_k, trace)
+    if not hits:
+        return {"answers": [{"engine": mode, "answer": "No documents yet. Upload a file first."}],
+                "sources": [], "trace": trace.steps}
+
+    engines = {"claude": [answer_with_claude], "jev": [answer_with_jev],
+               "both": [answer_with_claude, answer_with_jev]}[mode]
+    # Each engine gets its own trace so their timings don't mix; in "both"
+    # mode they run in parallel, as a real app would.
+    branch_traces = [Trace() for _ in engines]
+    with ThreadPoolExecutor(max_workers=len(engines)) as pool:
+        answers = list(pool.map(lambda fe: fe[0](question, hits, fe[1]), zip(engines, branch_traces)))
+    for bt in branch_traces:
+        trace.steps.extend(bt.steps)
 
     sources = [{"n": i, "doc_name": h["doc_name"], "chunk_index": h["chunk_index"],
                 "score": round(h["score"], 4)} for i, h in enumerate(hits, start=1)]
-    return {"answer": result["answer"], "sources": sources, "trace": trace.steps}
+    return {"answers": answers, "sources": sources, "trace": trace.steps,
+            "retrieval_ms": round(sum(s["ms"] for s in trace.steps[:2]), 1)}

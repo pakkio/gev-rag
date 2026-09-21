@@ -5,3 +5,4 @@ pypdf
 numpy
 fastembed
 anthropic
+typesafe-sdk

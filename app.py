@@ -20,11 +20,15 @@ def _load_dotenv():
 
 _load_dotenv()
 
+from typing import Literal  # noqa: E402
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from rag import embedder, generator, pipeline  # noqa: E402
+from rag import embedder, generator, jev, pipeline  # noqa: E402
+
+BENCH_RESULTS = ROOT / "data" / "bench_results.json"
 
 app = FastAPI(title="Tiny RAG")
 
@@ -32,6 +36,7 @@ app = FastAPI(title="Tiny RAG")
 class AskRequest(BaseModel):
     question: str
     top_k: int = 4
+    mode: Literal["claude", "jev", "both"] = "claude"
 
 
 @app.get("/")
@@ -44,6 +49,7 @@ def status():
     return {
         "llm_enabled": generator.llm_enabled(),
         "llm_model": generator.MODEL,
+        "jev_enabled": jev.jev_enabled(),
         "embed_model": embedder.MODEL_NAME,
         "documents": pipeline.store.documents(),
         "total_chunks": len(pipeline.store.chunks),
@@ -75,7 +81,19 @@ def delete_document(doc_id: str):
 def ask(req: AskRequest):
     if not req.question.strip():
         raise HTTPException(400, "Question is empty")
-    return pipeline.ask(req.question.strip(), max(1, min(req.top_k, 10)))
+    return pipeline.ask(req.question.strip(), max(1, min(req.top_k, 10)), req.mode)
+
+
+@app.get("/bench")
+def bench_page():
+    return FileResponse(ROOT / "static" / "bench.html")
+
+
+@app.get("/api/bench")
+def bench_results():
+    if not BENCH_RESULTS.exists():
+        raise HTTPException(404, "No benchmark results yet. Run bench.py first.")
+    return FileResponse(BENCH_RESULTS, media_type="application/json")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ A small, readable Retrieval-Augmented Generation (RAG) web app. You upload docum
 questions, and the app answers with citations. The right-hand panel shows each pipeline step:
 its timing, inputs and outputs.
 
-**Stack:** FastAPI · fastembed (local ONNX embeddings, no GPU or PyTorch) · a numpy vector store · Claude for generation · vanilla HTML/JS.
+**Stack:** FastAPI · fastembed (local ONNX embeddings, no GPU or PyTorch) · a numpy vector store · Claude for generation · Jev (TypeSafe) for fast answer selection · vanilla HTML/JS. Requires Python 3.10+.
 
 ## The RAG workflow
 
@@ -64,6 +64,32 @@ Fresh setup on another machine:
 ```bash
 python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
 ```
+
+## Experiment: Claude (generate) vs Jev (select)
+
+[Jev](https://docs.typesafe.ai) is TypeSafe's System One model. It returns typed judgments (yes/no probabilities, picks from a list), not text. `rag/jev.py` offers a second way to finish the query pipeline:
+
+```
+Retrieve ─┬─▶ Augment ─▶ Generate      Claude writes an answer with [n] citations
+          └─▶ Select                   code splits chunks into sentences; in ONE request Jev judges
+                                        "is the answer here?" (Noul) + "which sentence?" (Choice)
+```
+
+Jev's answer is copied verbatim from your documents, so it can't be invented. In the chat, switch between **Claude**, **Jev** and **Compare both** to see the answers side by side with timing bars.
+
+**Benchmark on public data:** SQuAD 2.0 (Wikipedia questions with gold answers, including unanswerable ones):
+
+```bash
+.venv\Scripts\python bench.py --dry-run
+```
+The dry run downloads SQuAD, ingests 5 articles and checks retrieval, with no API calls.
+
+```bash
+.venv\Scripts\python bench.py
+```
+The full run sends 60 questions to both engines. Then open http://localhost:8000/bench.
+
+Needs both keys in `.env`: `ANTHROPIC_API_KEY=...` and `TYPESAFE_API_KEY=...` (from https://console.typesafe.ai).
 
 ## Experiments that teach you RAG
 

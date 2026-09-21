@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude vs Jev</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --border: #e3e6eb; --grid: #eceef2; --text: #1c2330; --muted: #6b7482; --accent: #3b6fe0;
+    --claude: #0e9f9a; --jev: #d9480f;          /* validated: light, surface #fff */
+    --good: #1f8a5b; --bad: #c8322f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --panel: #171b21; --border: #2a3039; --grid: #232830; --text: #e4e8ee; --muted: #8b94a3; --accent: #6d97ff;
+      --claude: #1a9690; --jev: #d9601f;        /* validated: dark, surface #171b21 */
+      --good: #3cc58f; --bad: #f0706b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; }
+  header a { color: var(--accent); font-size: 13px; }
+  .meta { color: var(--muted); font-size: 12.5px; margin: 4px 0 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 15px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .label { font-size: 12px; color: var(--muted); }
+  .tile .value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 2px; }
+  .tile .detail { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+  svg .strong { fill: var(--text); font-weight: 600; }
+  svg .halo { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+  .tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-width: 340px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; z-index: 10; }
+  .tip b { color: var(--text); }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filters button { border: 1px solid var(--border); background: var(--panel); color: var(--muted); border-radius: 99px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
+  .filters button.active { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); padding: 6px 8px; white-space: nowrap; }
+  td { border-bottom: 1px solid var(--grid); padding: 7px 8px; vertical-align: top; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--muted); }
+  .ok { color: var(--good); font-weight: 600; white-space: nowrap; } .no { color: var(--bad); font-weight: 600; white-space: nowrap; }
+  .ans { color: var(--muted); display: block; margin-top: 2px; }
+  .pill { font-size: 11px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  code { background: var(--grid); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .note { font-size: 12.5px; color: var(--muted); }
+  .note li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Claude vs Jev on SQuAD 2.0</h1><a href="/">← back to the app</a></header>
+  <div class="meta" id="meta">Loading…</div>
+  <div id="content"></div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct = (x) => x == null ? "–" : Math.round(x * 100) + "%";
+const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + " s" : Math.round(ms) + " ms";
+const NAME = { claude: "Claude · generate", jev: "Jev · select" };
+const SVGNS = "http://www.w3.org/2000/svg";
+let data, rowFilter = "all";
+
+// ---- tooltip (shared) ----
+const tip = $("tip");
+function showTip(e, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = e.clientY + 14 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => tip.style.display = "none";
+
+function el(tag, attrs = {}, text) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+// ---- stat tiles ----
+function tiles(s, engines) {
+  const c = s.claude, j = s.jev;
+  const out = [];
+  if (c && j) {
+    out.push(`<div class="tile"><div class="label">Median answer time</div>
+      <div class="value">${(c.median_ms / j.median_ms).toFixed(1)}× faster</div>
+      <div class="detail"><span class="swatch" style="background:var(--jev)"></span>Jev ${fmtMs(j.median_ms)} vs
+      <span class="swatch" style="background:var(--claude)"></span>Claude ${fmtMs(c.median_ms)}</div></div>`);
+    out.push(`<div class="tile"><div class="label">Slowest 5% (p95)</div>
+      <div class="value">${fmtMs(j.p95_ms)} <span style="font-size:15px;color:var(--muted)">vs ${fmtMs(c.p95_ms)}</span></div>
+      <div class="detail">Jev vs Claude, answer step only</div></div>`);
+  }
+  for (const e of engines) {
+    const x = s[e];
+    out.push(`<div class="tile"><div class="label"><span class="swatch" style="background:var(--${e})"></span>${NAME[e]} accuracy</div>
+      <div class="value">${pct(x.accuracy)}</div>
+      <div class="detail">answerable ${pct(x.answerable_accuracy)} · abstains correctly ${pct(x.abstain_accuracy)}</div></div>`);
+  }
+  if (c) out.push(`<div class="tile"><div class="label">Claude cost, ${c.n} questions</div>
+      <div class="value">$${c.cost_usd.toFixed(3)}</div>
+      <div class="detail">${(c.input_tokens / 1000).toFixed(0)}k in + ${(c.output_tokens / 1000).toFixed(1)}k out tokens</div></div>`);
+  if (j) out.push(`<div class="tile"><div class="label">Jev tokens, ${j.n} questions</div>
+      <div class="value">${(j.input_tokens / 1000).toFixed(0)}k</div>
+      <div class="detail">${j.output_tokens} output tokens · see TypeSafe pricing</div></div>`);
+  out.push(`<div class="tile"><div class="label">Retrieval ceiling</div>
+      <div class="value">${pct(s.retrieval_hit_rate)}</div>
+      <div class="detail">answerable questions whose answer text is in the top-${data.meta.top_k} chunks</div></div>`);
+  return `<div class="tiles">${out.join("")}</div>`;
+}
+
+// ---- chart 1: latency strip plot (log x) ----
+function latencyChart(rows, engines) {
+  const W = 1000, laneH = 80, top = 22, left = 130, right = 24, bottom = 34;
+  const H = top + laneH * engines.length + bottom;
+  const all = rows.flatMap(r => engines.filter(e => r[e]).map(e => r[e].ms));
+  const lo = Math.pow(10, Math.floor(Math.log10(Math.max(1, Math.min(...all)))));
+  const hi = Math.pow(10, Math.ceil(Math.log10(Math.max(...all))));
+  const x = (ms) => left + (Math.log10(ms) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo)) * (W - left - right);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Answer time per question, log scale" });
+
+  // recessive grid at each decade
+  for (let d = lo; d <= hi; d *= 10) {
+    svg.appendChild(el("line", { x1: x(d), x2: x(d), y1: top - 6, y2: H - bottom, stroke: "var(--grid)", "stroke-width": 1 }));
+    svg.appendChild(el("text", { x: x(d), y: H - bottom + 16, "text-anchor": "middle" }, fmtMs(d)));
+  }
+  svg.appendChild(el("text", { x: W - right, y: H - 4, "text-anchor": "end" }, "answer-step time per question (log scale)"));
+
+  engines.forEach((e, i) => {
+    const cy = top + laneH * i + laneH / 2;
+    const s = data.summary[e];
+    svg.appendChild(el("text", { x: 0, y: cy + 4, class: "strong" }, NAME[e]));
+    // deterministic jitter so dots don't stack
+    rows.forEach((r, k) => {
+      if (!r[e]) return;
+      const jy = cy + 6 + (((k * 37) % 21) - 10) * 1.4;
+      const dot = el("circle", { cx: x(r[e].ms), cy: jy, r: 4.5, fill: `var(--${e})`, "fill-opacity": .78,
+        stroke: "var(--panel)", "stroke-width": 1.5 });
+      const hit = el("circle", { cx: x(r[e].ms), cy: jy, r: 9, fill: "transparent" });
+      hit.addEventListener("mousemove", ev => showTip(ev, `<b>${esc(r.question)}</b><br>${NAME[e]}: <b>${fmtMs(r[e].ms)}</b> · ${r[e].correct ? "✓ correct" : "✗ wrong"}`));
+      hit.addEventListener("mouseleave", hideTip);
+      svg.append(dot, hit);
+    });
+    // median marker + direct label
+    const mx = x(s.median_ms);
+    svg.appendChild(el("line", { x1: mx, x2: mx, y1: cy - 14, y2: cy + 26, stroke: "var(--text)", "stroke-width": 2, "stroke-linecap": "round" }));
+    svg.appendChild(el("text", { x: mx, y: cy - 20, "text-anchor": "middle", class: "strong halo" }, "median " + fmtMs(s.median_ms)));
+  });
+  return svg;
+}
+
+// ---- chart 2: accuracy bars, grouped by question type ----
+function accuracyChart(rows, engines) {
+  const groups = [
+    { key: "answerable_accuracy", label: "Answerable", n: rows.filter(r => r.answerable).length },
+    { key: "abstain_accuracy", label: "Unanswerable (should abstain)", n: rows.filter(r => !r.answerable).length },
+    { key: "accuracy", label: "Overall", n: rows.length },
+  ];
+  const W = 1000, left = 210, right = 60, barH = 16, gap = 2, groupGap = 18, top = 6;
+  const H = top + groups.length * (engines.length * (barH + gap) + groupGap);
+  const x = (v) => left + v * (W - left - right);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Accuracy by question type" });
+  [0, .25, .5, .75, 1].forEach(t => {
+    svg.appendChild(el("line", { x1: x(t), x2: x(t), y1: 0, y2: H - groupGap + 4, stroke: "var(--grid)" }));
+  });
+  let y = top;
+  groups.forEach(g => {
+    svg.appendChild(el("text", { x: 0, y: y + (engines.length * (barH + gap)) / 2 + 3, class: "strong" }, g.label));
+    svg.appendChild(el("text", { x: 0, y: y + (engines.length * (barH + gap)) / 2 + 17 }, `${g.n} questions`));
+    engines.forEach(e => {
+      const v = data.summary[e][g.key] ?? 0;
+      const w = Math.max(0, x(v) - left);
+      // bar with 4px rounded data-end, square at the baseline
+      const r = Math.min(4, w);
+      const path = `M${left},${y} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${barH - 2 * r} a${r},${r} 0 0 1 -${r},${r} h-${w - r} z`;
+      const bar = el("path", { d: path, fill: `var(--${e})` });
+      const hit = el("rect", { x: left, y: y - 1, width: W - left - right, height: barH + 2, fill: "transparent" });
+      const correct = Math.round(v * g.n);
+      hit.addEventListener("mousemove", ev => showTip(ev, `<b>${NAME[e]}</b> · ${g.label}<br>${correct} of ${g.n} correct (${pct(v)})`));
+      hit.addEventListener("mouseleave", hideTip);
+      svg.append(bar, el("text", { x: x(v) + 6, y: y + barH - 4, class: "strong" }, pct(v)), hit);
+      y += barH + gap;
+    });
+    y += groupGap;
+  });
+  return svg;
+}
+
+// ---- per-question table ----
+function mark(r) { return r ? `<span class="${r.correct ? "ok" : "no"}">${r.correct ? "✓ correct" : "✗ wrong"}</span>` : "–"; }
+function table(rows, engines) {
+  const both = engines.length === 2;
+  const pick = {
+    all: () => true,
+    disagree: (r) => both && r.claude && r.jev && r.claude.correct !== r.jev.correct,
+    claude_wrong: (r) => r.claude && !r.claude.correct,
+    jev_wrong: (r) => r.jev && !r.jev.correct,
+  }[rowFilter];
+  const shown = rows.filter(pick);
+  return `<div class="tablewrap"><table>
+    <thead><tr><th>Question</th><th>Type</th><th>Gold answer</th>${engines.map(e => `<th><span class="swatch" style="background:var(--${e})"></span>${NAME[e]}</th><th style="text-align:right">time</th>`).join("")}</tr></thead>
+    <tbody>${shown.map(r => `<tr>
+      <td>${esc(r.question)}<span class="ans">${esc(r.article.replace(/_/g, " "))}</span></td>
+      <td><span class="pill">${r.answerable ? "answerable" : "unanswerable"}</span></td>
+      <td>${r.answerable ? esc(r.gold.join(" / ")) : '<span class="ans">(abstain)</span>'}</td>
+      ${engines.map(e => `<td>${mark(r[e])}<span class="ans">${esc((r[e]?.answer || "").slice(0, 220))}</span></td><td class="num">${r[e] ? fmtMs(r[e].ms) : ""}</td>`).join("")}
+    </tr>`).join("") || `<tr><td colspan="9" class="ans">No rows match this filter.</td></tr>`}</tbody></table></div>`;
+}
+
+function render() {
+  const { meta, summary, rows } = data;
+  const engines = meta.engines.filter(e => summary[e]);
+  const running = rows.length < (meta.total || rows.length);
+  $("meta").innerHTML = `${esc(meta.dataset)} · ${rows.length}${running ? " of " + meta.total : ""} questions from ${meta.articles.length} articles ·
+    top-${meta.top_k} chunks · ${esc(meta.claude_model)} (effort ${esc(meta.claude_effort)}) vs Jev · ${new Date(meta.created).toLocaleString()}
+    ${running ? " · <b>run in progress, refreshing…</b>" : ""}`;
+
+  if (!engines.length) {
+    $("content").innerHTML = `<div class="panel empty">Dry run only: retrieval found the answer text for <b>${pct(summary.retrieval_hit_rate)}</b> of answerable questions.<br><br>
+      Add your API keys to <code>.env</code> and run <code>.venv\\Scripts\\python bench.py</code> to compare the engines.</div>`;
+    return;
+  }
+
+  $("content").innerHTML = tiles(summary, engines) + `
+    <div class="panel"><h2>How long the answer step takes</h2>
+      <p class="sub">One dot per question. Both engines get the same retrieved chunks, so this is only the time to produce an answer. Hover a dot to see the question.</p>
+      <div class="legend">${engines.map(e => `<span><span class="swatch" style="background:var(--${e})"></span>${NAME[e]}</span>`).join("")}</div>
+      <div id="lat"></div></div>
+    <div class="panel"><h2>Accuracy by question type</h2>
+      <p class="sub">SQuAD grading: an answer is correct if it contains a gold answer string. For unanswerable questions, it's correct if the engine says "Not in the documents."</p>
+      <div class="legend">${engines.map(e => `<span><span class="swatch" style="background:var(--${e})"></span>${NAME[e]}</span>`).join("")}</div>
+      <div id="acc"></div></div>
+    <div class="panel"><h2>Every question</h2>
+      <div class="filters" id="filters">
+        ${[["all", "All"], ["disagree", "Engines disagree"], ["claude_wrong", "Claude wrong"], ["jev_wrong", "Jev wrong"]]
+          .filter(([k]) => engines.length === 2 || k === "all" || k === engines[0] + "_wrong")
+          .map(([k, l]) => `<button data-f="${k}" class="${k === rowFilter ? "active" : ""}">${l}</button>`).join("")}
+      </div><div id="tbl">${table(rows, engines)}</div></div>
+    <div class="panel note"><h2>Reading this fairly</h2><ul>
+      <li><b>Different outputs.</b> Claude writes a sentence in its own words. Jev returns a sentence copied from the source. Jev's answer can't be invented, but it's evidence, not a rewritten reply.</li>
+      <li><b>Lenient grading for Jev.</b> A whole sentence containing the answer counts as correct. Claude's reply also has to contain the gold string.</li>
+      <li><b>Claude settings.</b> Claude runs at <code>${esc(meta.claude_effort)}</code> effort. Higher effort is slower and may be more accurate.</li>
+      <li><b>Small sample.</b> ${rows.length} questions is enough to see big differences, not small ones. Re-run with <code>--answerable</code> / <code>--unanswerable</code> for more.</li></ul></div>`;
+  $("lat").appendChild(latencyChart(rows, engines));
+  $("acc").appendChild(accuracyChart(rows, engines));
+  $("filters").onclick = (e) => {
+    if (!e.target.dataset.f) return;
+    rowFilter = e.target.dataset.f;
+    document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("active", b === e.target));
+    $("tbl").innerHTML = table(rows, engines);
+  };
+  if (running) setTimeout(load, 5000);
+}
+
+async function load() {
+  const res = await fetch("/api/bench", { cache: "no-store" });
+  if (!res.ok) {
+    $("meta").textContent = "";
+    $("content").innerHTML = `<div class="panel empty">No benchmark results yet.<br><br>Run <code>.venv\\Scripts\\python bench.py --dry-run</code>, then the full run.</div>`;
+    return;
+  }
+  data = await res.json();
+  render();
+}
+load();
+</script>
+</body>
+</html>

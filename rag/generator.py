@@ -8,10 +8,13 @@ import os
 import anthropic
 
 MODEL = "claude-opus-5"
+EFFORT = "low"  # factual lookups rarely need deep reasoning; raise for harder questions
+PRICE_PER_MTOK = {"input": 5.00, "output": 25.00}  # claude-opus-5, USD
+ABSTAIN_PREFIX = "Not in the documents."
 
-SYSTEM_PROMPT = """You answer questions using only the numbered context passages provided.
+SYSTEM_PROMPT = f"""You answer questions using only the numbered context passages provided.
 - Cite passages inline like [1] or [2][3] right after the facts they support.
-- If the context does not contain the answer, say so plainly instead of guessing.
+- If the context does not contain the answer, begin your reply with "{ABSTAIN_PREFIX}" and do not guess.
 - Be concise."""
 
 
@@ -42,7 +45,7 @@ def generate(prompt: str) -> dict:
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": "medium"},
+            output_config={"effort": EFFORT},
             # If a safety classifier declines, the API retries on a fallback model.
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
@@ -60,8 +63,12 @@ def generate(prompt: str) -> dict:
         answer = "The model declined to answer this question."
     else:
         answer = "".join(b.text for b in response.content if b.type == "text")
+    usage = response.usage
+    cost = (usage.input_tokens * PRICE_PER_MTOK["input"] + usage.output_tokens * PRICE_PER_MTOK["output"]) / 1e6
     return {
         "answer": answer,
+        "abstained": answer.strip().startswith(ABSTAIN_PREFIX),
         "model": response.model,
-        "usage": {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens},
+        "usage": {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                  "cost_usd": round(cost, 6)},
     }
