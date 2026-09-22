@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from rag import embedder, generator, jev, pipeline  # noqa: E402
+from rag import embedder, generator, jev, local_llm, pipeline  # noqa: E402
 
 BENCH_RESULTS = ROOT / "data" / "bench_results.json"
 
@@ -36,7 +36,7 @@ app = FastAPI(title="Tiny RAG")
 class AskRequest(BaseModel):
     question: str
     top_k: int = 4
-    mode: Literal["claude", "jev", "both"] = "claude"
+    engines: list[Literal["claude", "local", "jev"]] = ["claude"]
 
 
 @app.get("/")
@@ -50,6 +50,8 @@ def status():
         "llm_enabled": generator.llm_enabled(),
         "llm_model": generator.MODEL,
         "jev_enabled": jev.jev_enabled(),
+        "local_model": local_llm.MODEL,
+        "local": local_llm.local_status(),
         "embed_model": embedder.MODEL_NAME,
         "documents": pipeline.store.documents(),
         "total_chunks": len(pipeline.store.chunks),
@@ -81,7 +83,10 @@ def delete_document(doc_id: str):
 def ask(req: AskRequest):
     if not req.question.strip():
         raise HTTPException(400, "Question is empty")
-    return pipeline.ask(req.question.strip(), max(1, min(req.top_k, 10)), req.mode)
+    engines = list(dict.fromkeys(req.engines))  # dedupe, keep order
+    if not engines:
+        raise HTTPException(400, "Pick at least one engine")
+    return pipeline.ask(req.question.strip(), max(1, min(req.top_k, 10)), engines)
 
 
 @app.get("/bench")

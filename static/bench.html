@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude vs Jev</title>
+<title>Generate vs Select</title>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --border: #e3e6eb; --grid: #eceef2; --text: #1c2330; --muted: #6b7482; --accent: #3b6fe0;
-    --claude: #0e9f9a; --jev: #d9480f;          /* validated: light, surface #fff */
+    --claude: #0e9f9a; --jev: #d9480f; --local: #6f52e8;   /* validated 3-slot palette: light, surface #fff */
     --good: #1f8a5b; --bad: #c8322f;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1216; --panel: #171b21; --border: #2a3039; --grid: #232830; --text: #e4e8ee; --muted: #8b94a3; --accent: #6d97ff;
-      --claude: #1a9690; --jev: #d9601f;        /* validated: dark, surface #171b21 */
+      --claude: #1a9690; --jev: #d9601f; --local: #8a74f0; /* validated 3-slot palette: dark, surface #171b21 */
       --good: #3cc58f; --bad: #f0706b;
     }
   }
@@ -59,7 +59,7 @@
 </head>
 <body>
 <div class="wrap">
-  <header><h1>Claude vs Jev on SQuAD 2.0</h1><a href="/">← back to the app</a></header>
+  <header><h1>Generate vs select on SQuAD 2.0</h1><a href="/">← back to the app</a></header>
   <div class="meta" id="meta">Loading…</div>
   <div id="content"></div>
 </div>
@@ -70,7 +70,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (x) => x == null ? "–" : Math.round(x * 100) + "%";
 const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + " s" : Math.round(ms) + " ms";
-const NAME = { claude: "Claude · generate", jev: "Jev · select" };
+const NAME = { claude: "Claude · generate", local: "Local LLM · generate", jev: "Jev · select" };
+const SHORT = { claude: "Claude", local: "local LLM", jev: "Jev" };
 const SVGNS = "http://www.w3.org/2000/svg";
 let data, rowFilter = "all";
 
@@ -93,17 +94,18 @@ function el(tag, attrs = {}, text) {
 
 // ---- stat tiles ----
 function tiles(s, engines) {
-  const c = s.claude, j = s.jev;
+  const c = s.claude, j = s.jev, l = s.local;
   const out = [];
-  if (c && j) {
-    out.push(`<div class="tile"><div class="label">Median answer time</div>
-      <div class="value">${(c.median_ms / j.median_ms).toFixed(1)}× faster</div>
+  if (j) for (const o of engines.filter(e => e !== "jev")) {
+    const x = s[o];
+    out.push(`<div class="tile"><div class="label">Jev vs ${SHORT[o]}, median answer time</div>
+      <div class="value">${(x.median_ms / j.median_ms).toFixed(1)}× faster</div>
       <div class="detail"><span class="swatch" style="background:var(--jev)"></span>Jev ${fmtMs(j.median_ms)} vs
-      <span class="swatch" style="background:var(--claude)"></span>Claude ${fmtMs(c.median_ms)}</div></div>`);
-    out.push(`<div class="tile"><div class="label">Slowest 5% (p95)</div>
-      <div class="value">${fmtMs(j.p95_ms)} <span style="font-size:15px;color:var(--muted)">vs ${fmtMs(c.p95_ms)}</span></div>
-      <div class="detail">Jev vs Claude, answer step only</div></div>`);
+      <span class="swatch" style="background:var(--${o})"></span>${SHORT[o]} ${fmtMs(x.median_ms)}</div></div>`);
   }
+  if (engines.length > 1) out.push(`<div class="tile"><div class="label">Slowest 5% (p95), answer step</div>
+      <div class="detail" style="margin-top:6px;font-size:13px;line-height:1.8">${engines.map(e =>
+        `<span class="swatch" style="background:var(--${e})"></span>${SHORT[e]} <b style="color:var(--text)">${fmtMs(s[e].p95_ms)}</b>`).join("<br>")}</div></div>`);
   for (const e of engines) {
     const x = s[e];
     out.push(`<div class="tile"><div class="label"><span class="swatch" style="background:var(--${e})"></span>${NAME[e]} accuracy</div>
@@ -113,6 +115,9 @@ function tiles(s, engines) {
   if (c) out.push(`<div class="tile"><div class="label">Claude cost, ${c.n} questions</div>
       <div class="value">$${c.cost_usd.toFixed(3)}</div>
       <div class="detail">${(c.input_tokens / 1000).toFixed(0)}k in + ${(c.output_tokens / 1000).toFixed(1)}k out tokens</div></div>`);
+  if (l) out.push(`<div class="tile"><div class="label">Local LLM cost, ${l.n} questions</div>
+      <div class="value">$0</div>
+      <div class="detail">${esc(data.meta.local_model || "")} on your GPU · ${(l.input_tokens / 1000).toFixed(0)}k in + ${(l.output_tokens / 1000).toFixed(1)}k out tokens</div></div>`);
   if (j) out.push(`<div class="tile"><div class="label">Jev tokens, ${j.n} questions</div>
       <div class="value">${(j.input_tokens / 1000).toFixed(0)}k</div>
       <div class="detail">${j.output_tokens} output tokens · see TypeSafe pricing</div></div>`);
@@ -202,13 +207,9 @@ function accuracyChart(rows, engines) {
 // ---- per-question table ----
 function mark(r) { return r ? `<span class="${r.correct ? "ok" : "no"}">${r.correct ? "✓ correct" : "✗ wrong"}</span>` : "–"; }
 function table(rows, engines) {
-  const both = engines.length === 2;
-  const pick = {
-    all: () => true,
-    disagree: (r) => both && r.claude && r.jev && r.claude.correct !== r.jev.correct,
-    claude_wrong: (r) => r.claude && !r.claude.correct,
-    jev_wrong: (r) => r.jev && !r.jev.correct,
-  }[rowFilter];
+  const pick = rowFilter === "all" ? () => true
+    : rowFilter === "disagree" ? (r) => new Set(engines.filter(e => r[e]).map(e => r[e].correct)).size > 1
+    : (r) => r[rowFilter] && !r[rowFilter].correct;
   const shown = rows.filter(pick);
   return `<div class="tablewrap"><table>
     <thead><tr><th>Question</th><th>Type</th><th>Gold answer</th>${engines.map(e => `<th><span class="swatch" style="background:var(--${e})"></span>${NAME[e]}</th><th style="text-align:right">time</th>`).join("")}</tr></thead>
@@ -225,7 +226,7 @@ function render() {
   const engines = meta.engines.filter(e => summary[e]);
   const running = rows.length < (meta.total || rows.length);
   $("meta").innerHTML = `${esc(meta.dataset)} · ${rows.length}${running ? " of " + meta.total : ""} questions from ${meta.articles.length} articles ·
-    top-${meta.top_k} chunks · ${esc(meta.claude_model)} (effort ${esc(meta.claude_effort)}) vs Jev · ${new Date(meta.created).toLocaleString()}
+    top-${meta.top_k} chunks · ${engines.map(e => e === "claude" ? `${esc(meta.claude_model)} (effort ${esc(meta.claude_effort)})` : e === "local" ? esc(meta.local_model) : "Jev").join(" vs ")} · ${new Date(meta.created).toLocaleString()}
     ${running ? " · <b>run in progress, refreshing…</b>" : ""}`;
 
   if (!engines.length) {
@@ -245,12 +246,12 @@ function render() {
       <div id="acc"></div></div>
     <div class="panel"><h2>Every question</h2>
       <div class="filters" id="filters">
-        ${[["all", "All"], ["disagree", "Engines disagree"], ["claude_wrong", "Claude wrong"], ["jev_wrong", "Jev wrong"]]
-          .filter(([k]) => engines.length === 2 || k === "all" || k === engines[0] + "_wrong")
+        ${[["all", "All"], ...(engines.length > 1 ? [["disagree", "Engines disagree"]] : []), ...engines.map(e => [e, SHORT[e] + " wrong"])]
           .map(([k, l]) => `<button data-f="${k}" class="${k === rowFilter ? "active" : ""}">${l}</button>`).join("")}
       </div><div id="tbl">${table(rows, engines)}</div></div>
     <div class="panel note"><h2>Reading this fairly</h2><ul>
-      <li><b>Different outputs.</b> Claude writes a sentence in its own words. Jev returns a sentence copied from the source. Jev's answer can't be invented, but it's evidence, not a rewritten reply.</li>
+      <li><b>Different outputs.</b> Claude and the local LLM write an answer in their own words. Jev returns a sentence copied from the source. Jev's answer can't be invented, but it's evidence, not a rewritten reply.</li>
+      <li><b>Where each runs.</b> Claude and Jev are cloud APIs, so their times include the network round trip. The local LLM runs on your GPU with no network, but its speed depends on your hardware.</li>
       <li><b>Lenient grading for Jev.</b> A whole sentence containing the answer counts as correct. Claude's reply also has to contain the gold string.</li>
       <li><b>Claude settings.</b> Claude runs at <code>${esc(meta.claude_effort)}</code> effort. Higher effort is slower and may be more accurate.</li>
       <li><b>Small sample.</b> ${rows.length} questions is enough to see big differences, not small ones. Re-run with <code>--answerable</code> / <code>--unanswerable</code> for more.</li></ul></div>`;

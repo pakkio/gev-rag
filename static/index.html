@@ -8,13 +8,13 @@
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --border: #e3e6eb; --text: #1c2330; --muted: #6b7482;
     --accent: #3b6fe0; --accent-soft: #e8efff; --ok: #1f9d6b; --warn: #c7811a; --code: #f1f3f6;
-    --ingest: #7a5af5; --query: #0e9f9a; --jev: #d9480f;
+    --ingest: #7a5af5; --query: #0e9f9a; --jev: #d9480f; --local: #6f52e8;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1216; --panel: #171b21; --border: #2a3039; --text: #e4e8ee; --muted: #8b94a3;
       --accent: #6d97ff; --accent-soft: #1c2740; --ok: #3cc58f; --warn: #e3a44a; --code: #1f242c;
-      --ingest: #9d85ff; --query: #35c7c1; --jev: #ff8a4c;
+      --ingest: #9d85ff; --query: #35c7c1; --jev: #ff8a4c; --local: #8a74f0;
     }
   }
   * { box-sizing: border-box; }
@@ -79,20 +79,22 @@
 
   .modes { display: flex; gap: 4px; padding: 10px 12px 0; flex-wrap: wrap; }
   .modes button { border: 1px solid var(--border); background: var(--panel); color: var(--muted); border-radius: 99px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
+  .modes .lbl { font-size: 12px; color: var(--muted); align-self: center; margin-right: 2px; }
   .modes button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .modes button:disabled { opacity: .4; cursor: not-allowed; }
   .modes a { margin-left: auto; font-size: 12px; color: var(--accent); align-self: center; }
   .flow.jev .tag { color: var(--jev); }
   .flow.jev .node.lit { background: var(--jev); border-color: var(--jev); color: #fff; }
   .step.jev .n { background: var(--jev); }
-  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-self: stretch; max-width: 100%; }
+  .duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-self: stretch; max-width: 100%; }
   .card { background: var(--code); border-radius: 10px; padding: 10px 13px; white-space: pre-wrap; word-wrap: break-word; border-top: 3px solid var(--query); }
-  .card.jev { border-top-color: var(--jev); }
+  .card.jev { border-top-color: var(--jev); } .card.local { border-top-color: var(--local); }
   .card .who { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; margin-bottom: 4px; white-space: normal; }
-  .card.claude .who { color: var(--query); } .card.jev .who { color: var(--jev); }
+  .card.claude .who { color: var(--query); } .card.jev .who { color: var(--jev); } .card.local .who { color: var(--local); }
   .card .who span { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
   .card .meta { font-size: 11.5px; color: var(--muted); margin-top: 6px; white-space: normal; }
   .race { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
-  .race .lane { display: grid; grid-template-columns: 52px 1fr 64px; align-items: center; gap: 8px; margin-top: 3px; }
+  .race .lane { display: grid; grid-template-columns: 90px 1fr 64px; align-items: center; gap: 8px; margin-top: 3px; }
   .race .track { height: 8px; background: var(--code); border-radius: 4px; overflow: hidden; }
   .race .track i { display: block; height: 100%; border-radius: 4px; }
   .race .speedup { margin-top: 4px; color: var(--text); font-weight: 600; }
@@ -110,6 +112,7 @@
   <span class="badge" id="embedBadge">embeddings: …</span>
   <span class="badge" id="llmBadge">LLM: …</span>
   <span class="badge" id="jevBadge">Jev: …</span>
+  <span class="badge" id="localBadge">Local: …</span>
   <span class="badge" id="countBadge">0 chunks</span>
 </header>
 
@@ -140,9 +143,10 @@
       </div>
     </div>
     <div class="modes" id="modes">
-      <button type="button" data-mode="claude" class="active">Claude (generate)</button>
-      <button type="button" data-mode="jev">Jev (select)</button>
-      <button type="button" data-mode="both">Compare both</button>
+      <span class="lbl">Engines:</span>
+      <button type="button" data-engine="claude">Claude · generate</button>
+      <button type="button" data-engine="local">Local LLM · generate</button>
+      <button type="button" data-engine="jev">Jev · select</button>
       <a href="/bench">Benchmark →</a>
     </div>
     <form id="ask">
@@ -167,6 +171,7 @@
       <span class="node" data-s="retrieve">Retrieve</span><span class="arrow">→</span>
       <span class="node" data-s="augment">Augment</span><span class="arrow">→</span>
       <span class="node" data-s="generate">Generate</span>
+      <span class="arrow">(Claude or local LLM)</span>
     </div>
     <div class="flow jev" id="flowJev">
       <span class="tag">JEV</span>
@@ -194,17 +199,25 @@ const STEP_INFO = {
   retrieve:    ["Retrieve", "query", "Cosine similarity between the question vector and every chunk vector; keep the top-k."],
   augment:     ["Augment",  "query", "Paste the retrieved chunks into the prompt as numbered context."],
   generate:    ["Generate", "query", "The LLM answers using only that context, citing chunks as [n]."],
+  generate_local: ["Generate (local)", "query", "An open model on your own GPU (via Ollama) answers from the same prompt Claude gets. Free and private."],
   select:      ["Select (Jev)", "jev", "Code splits the chunks into sentences. In one request Jev judges whether the answer is there at all (Noul) and which sentence gives it (Choice). The answer is copied verbatim, not written."],
 };
 
 async function refreshStatus() {
   const s = await (await fetch("/api/status")).json();
   $("embedBadge").textContent = "embeddings: " + s.embed_model;
-  $("llmBadge").textContent = s.llm_enabled ? "LLM: " + s.llm_model : "LLM: off (retrieval only)";
+  $("llmBadge").textContent = s.llm_enabled ? "Claude: " + s.llm_model : "Claude: off";
+  $("llmBadge").title = s.llm_enabled ? "" : "Disabled. Set CLAUDE_ENABLED=true in .env (needs Anthropic API credits).";
   $("llmBadge").className = "badge " + (s.llm_enabled ? "on" : "off");
   $("countBadge").textContent = s.total_chunks + " chunks";
   $("jevBadge").textContent = s.jev_enabled ? "Jev: on" : "Jev: off (no key)";
   $("jevBadge").className = "badge " + (s.jev_enabled ? "on" : "off");
+  $("localBadge").textContent = s.local.enabled ? "Local: " + s.local_model : "Local: off";
+  $("localBadge").title = s.local.reason || "";
+  $("localBadge").className = "badge " + (s.local.enabled ? "on" : "off");
+  applyAvailability({ claude: s.llm_enabled, local: s.local.enabled, jev: s.jev_enabled },
+                    { claude: "Claude is disabled: set CLAUDE_ENABLED=true in .env (needs Anthropic API credits)",
+                      local: "Local LLM is off: " + (s.local.reason || ""), jev: "Jev is off: add TYPESAFE_API_KEY to .env" });
   $("docs").innerHTML = s.documents.length
     ? s.documents.map(d => `<div class="doc"><span title="${esc(d.name)}">${esc(d.name)} · ${d.chunks}</span>
         <button title="Remove" onclick="removeDoc('${d.doc_id}')">×</button></div>`).join("")
@@ -222,7 +235,7 @@ function busyFlow(flowId) { resetFlow(); document.querySelectorAll(`#${flowId} .
 async function lightFlow(steps) {
   resetFlow();
   for (const s of steps) {
-    const node = document.querySelector(`.node[data-s="${s.step}"]`);
+    const node = document.querySelector(`.node[data-s="${s.step === "generate_local" ? "generate" : s.step}"]`);
     if (node) { node.classList.add("lit"); await new Promise(r => setTimeout(r, 180)); }
   }
 }
@@ -245,6 +258,7 @@ function stepDetails(s) {
     case "augment": return kv({ "prompt length": s.prompt_chars.toLocaleString() + " chars" }) +
                   `<pre><b>SYSTEM</b>\n${esc(s.system)}</pre><pre><b>USER</b>\n${esc(s.prompt)}</pre>`;
     case "generate": return kv(Object.assign({ model: s.model }, s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens, cost: "$" + s.usage.cost_usd.toFixed(4) } : {}));
+    case "generate_local": return kv(Object.assign({ model: s.model }, s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens, cost: "$0 (your GPU)", "model load": s.usage.load_ms > 50 ? s.usage.load_ms + " ms (cold start)" : "already loaded" } : {}));
     case "select": return kv(Object.assign({ model: s.model || "(disabled)", "candidate sentences": s.candidates },
                     s.answerable !== null ? { "answerable (Noul)": s.answerable.toFixed(3), "choice confidence": s.confidence.toFixed(3),
                       decision: s.abstained ? "abstain: 'Not in the documents.'" : "answer with the picked sentence" } : {},
@@ -306,27 +320,45 @@ function addMsg(cls, html) {
   return div;
 }
 
-let mode = "claude";
+let engines = ["claude"], firstStatus = true;
+// Grey out engines that can't run; on first load, select every engine that can.
+function applyAvailability(available, reasons) {
+  document.querySelectorAll("#modes button").forEach(b => {
+    const ok = available[b.dataset.engine];
+    b.disabled = !ok;
+    b.title = ok ? "" : reasons[b.dataset.engine];
+    if (!ok) b.classList.remove("active");
+    else if (firstStatus) b.classList.add("active");
+  });
+  firstStatus = false;
+  const active = [...document.querySelectorAll("#modes button.active")].map(x => x.dataset.engine);
+  engines = active.length ? active : ["claude"];  // nothing available: Claude explains how to enable it
+}
 document.querySelectorAll("#modes button").forEach(b => b.onclick = () => {
-  mode = b.dataset.mode;
-  document.querySelectorAll("#modes button").forEach(x => x.classList.toggle("active", x === b));
+  const on = !b.classList.contains("active");
+  if (!on && document.querySelectorAll("#modes button.active").length === 1) return; // keep at least one
+  b.classList.toggle("active", on);
+  engines = [...document.querySelectorAll("#modes button.active")].map(x => x.dataset.engine);
 });
 
-const ENGINE = { claude: "Claude · generate", jev: "Jev · select" };
+const ENGINE = { claude: "Claude · generate", local: "Local LLM · generate", jev: "Jev · select" };
+const COLOR = { claude: "query", local: "local", jev: "jev" };
 const cite = (text) => esc(text).replace(/\[(\d+)\]/g, '<span class="cite">[$1]</span>');
 
 function answerCard(a) {
   const meta = a.engine === "jev" && a.answerable != null
     ? `answerable p=${a.answerable.toFixed(2)} · confidence ${a.confidence.toFixed(2)}`
-    : a.usage && a.usage.cost_usd != null ? `${a.usage.input_tokens}+${a.usage.output_tokens} tokens · $${a.usage.cost_usd.toFixed(4)}` : "";
+    : a.usage && a.usage.cost_usd != null ? `${a.usage.input_tokens}+${a.usage.output_tokens} tokens · ${a.engine === "local" ? "free (your GPU)" : "$" + a.usage.cost_usd.toFixed(4)}` : "";
   return `<div class="card ${a.engine}"><div class="who">${ENGINE[a.engine] || a.engine}<span>${a.ms != null ? Math.round(a.ms) + " ms" : ""}</span></div>${cite(a.answer)}${meta ? `<div class="meta">${meta}</div>` : ""}</div>`;
 }
 
 function race(answers) {
   const max = Math.max(...answers.map(a => a.ms));
-  const lanes = answers.map(a => `<div class="lane"><span>${a.engine}</span><div class="track"><i style="width:${(a.ms / max * 100).toFixed(1)}%;background:var(--${a.engine === "jev" ? "jev" : "query"})"></i></div><span>${Math.round(a.ms)} ms</span></div>`).join("");
-  const [fast, slow] = [...answers].sort((x, y) => x.ms - y.ms);
-  return `<div class="race">Answer-step time (retrieval is shared)${lanes}<div class="speedup">${fast.engine} was ${(slow.ms / fast.ms).toFixed(1)}× faster</div></div>`;
+  const lanes = answers.map(a => `<div class="lane"><span>${ENGINE[a.engine].split(" · ")[0]}</span><div class="track"><i style="width:${(a.ms / max * 100).toFixed(1)}%;background:var(--${COLOR[a.engine]})"></i></div><span>${Math.round(a.ms)} ms</span></div>`).join("");
+  const sorted = [...answers].sort((x, y) => x.ms - y.ms);
+  const fast = sorted[0], name = (a) => ENGINE[a.engine].split(" · ")[0];
+  const vs = sorted.slice(1).map(a => `${(a.ms / fast.ms).toFixed(1)}× faster than ${name(a)}`).join(", ");
+  return `<div class="race">Answer-step time (retrieval is shared)${lanes}<div class="speedup">${name(fast)} was ${vs}</div></div>`;
 }
 
 $("ask").onsubmit = async (e) => {
@@ -340,7 +372,7 @@ $("ask").onsubmit = async (e) => {
   busyFlow("flowQuery");
   try {
     const res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, top_k: +$("topK").value, mode }) });
+      body: JSON.stringify({ question: q, top_k: +$("topK").value, engines }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || res.statusText);
     const src = data.sources.map(s => `[${s.n}] ${esc(s.doc_name)} #${s.chunk_index} (${s.score.toFixed(2)})`).join(" · ");
@@ -348,7 +380,7 @@ $("ask").onsubmit = async (e) => {
     const a0 = data.answers[0];
     if (data.answers.length > 1) {
       pending.className = "duo";
-      pending.innerHTML = data.answers.map(answerCard).join("") + (data.answers.every(a => a.usage) ? race(data.answers) : "") + `<div class="race">${srcHtml}</div>`;
+      pending.innerHTML = data.answers.map(answerCard).join("") + (data.answers.filter(a => a.usage).length > 1 ? race(data.answers.filter(a => a.usage)) : "") + `<div class="race">${srcHtml}</div>`;
     } else if (a0.ms != null) {
       pending.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">${ENGINE[a0.engine]} · ${Math.round(a0.ms)} ms</div>` + cite(a0.answer) + srcHtml;
     } else {

@@ -19,7 +19,10 @@ SYSTEM_PROMPT = f"""You answer questions using only the numbered context passage
 
 
 def llm_enabled() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    # Off by default: the API is billed separately from a Claude subscription and
+    # needs prepaid credits. Set CLAUDE_ENABLED=true in .env once you have them.
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    return has_key and os.environ.get("CLAUDE_ENABLED", "false").lower() == "true"
 
 
 def build_prompt(question: str, hits: list) -> str:
@@ -33,8 +36,8 @@ def build_prompt(question: str, hits: list) -> str:
 def generate(prompt: str) -> dict:
     if not llm_enabled():
         return {
-            "answer": "LLM is off (no ANTHROPIC_API_KEY set), so only retrieval ran. "
-                      "The retrieved chunks below are what would be sent to the model.",
+            "answer": "Claude is disabled. To use it, add ANTHROPIC_API_KEY and CLAUDE_ENABLED=true to .env "
+                      "(the Anthropic API needs prepaid credits). The retrieved chunks are in the trace.",
             "model": None, "usage": None,
         }
 

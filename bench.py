@@ -1,11 +1,12 @@
-"""Benchmark: Claude (generate) vs Jev (select) on SQuAD 2.0.
+"""Benchmark: Claude (generate) vs local LLM (generate) vs Jev (select) on SQuAD 2.0.
 
   .venv\\Scripts\\python bench.py --dry-run     # build dataset + ingest + retrieval check (no API calls)
   .venv\\Scripts\\python bench.py               # full run, writes data/bench_results.json
   then open http://localhost:8000/bench
 
-Both engines get exactly the same retrieved chunks for each question, so the
+All engines get exactly the same retrieved chunks for each question, so the
 comparison isolates the final step: writing an answer vs selecting a sentence.
+By default every enabled engine runs; pick a subset with e.g. --engines local,jev.
 Questions run one at a time (not in parallel) so latencies don't interfere.
 
 Grading follows SQuAD's convention:
@@ -26,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import app  # noqa: F401  (loads .env before the SDK clients are created)
-from rag import generator, jev, pipeline
+from rag import generator, jev, local_llm, pipeline
 
 ROOT = Path(__file__).resolve().parent
 SQUAD_FILE = ROOT / "datasets" / "squad-dev-v2.0.json"
@@ -112,7 +113,7 @@ def summarize(rows: list, engines: list) -> dict:
             "input_tokens": tokens_in,
             "output_tokens": tokens_out,
             "cost_usd": round(sum((r[e].get("usage") or {}).get("cost_usd") or 0 for r in done), 4)
-                        if e == "claude" else None,
+                        if e in ("claude", "local") else None,
         }
     retrievable = [r for r in rows if r["answerable"]]
     summary["retrieval_hit_rate"] = (round(sum(r["retrieval_hit"] for r in retrievable) / len(retrievable), 4)
@@ -121,8 +122,7 @@ def summarize(rows: list, engines: list) -> dict:
 
 
 def run_engine(engine: str, question: str, hits: list) -> dict:
-    fn = pipeline.answer_with_claude if engine == "claude" else pipeline.answer_with_jev
-    return fn(question, hits, pipeline.Trace())
+    return pipeline.ENGINES[engine](question, hits, pipeline.Trace())
 
 
 def main():
@@ -131,30 +131,36 @@ def main():
     ap.add_argument("--answerable", type=int, default=8, help="answerable questions per article")
     ap.add_argument("--unanswerable", type=int, default=4, help="unanswerable questions per article")
     ap.add_argument("--top-k", type=int, default=4)
-    ap.add_argument("--engines", default="claude,jev")
+    ap.add_argument("--engines", default="", help="comma list of claude,local,jev (default: all enabled)")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--dry-run", action="store_true", help="no API calls: dataset, ingest and retrieval only")
     args = ap.parse_args()
-    engines = [e for e in args.engines.split(",") if e]
+    enabled = {"claude": generator.llm_enabled(), "local": local_llm.local_status()["enabled"],
+               "jev": jev.jev_enabled()}
+    engines = [e for e in args.engines.split(",") if e] or [e for e, on in enabled.items() if on]
+    if not engines and not args.dry_run:
+        raise SystemExit("No engine is enabled. Start Ollama, add TYPESAFE_API_KEY, or enable Claude in .env.")
 
     questions = prepare(args.answerable, args.unanswerable, args.seed)
     print(f"Dataset: {len(questions)} questions from {len(ARTICLES)} SQuAD 2.0 articles")
     ensure_ingested()
 
     if not args.dry_run:
-        missing = [e for e in engines if not {"claude": generator.llm_enabled, "jev": jev.jev_enabled}[e]()]
-        if missing:
-            raise SystemExit(f"Missing API key for: {', '.join(missing)}. Add it to .env and re-run.")
-        # Warm-up: the first call to each API pays for connection setup; don't count it.
+        # Warm-up doubles as a preflight: the first call pays for connection setup
+        # (or loading the local model into VRAM), so it isn't counted; if an engine
+        # fails here (missing key, no credits, Ollama down) stop before wasting a run.
         warm_hits = pipeline.retrieve(questions[0]["question"], args.top_k, pipeline.Trace())
         for e in engines:
-            run_engine(e, questions[0]["question"], warm_hits)
+            r = run_engine(e, questions[0]["question"], warm_hits)
+            if r.get("usage") is None:
+                raise SystemExit(f"{e} is not working: {r['answer']} Fix it, or leave it out with --engines.")
+            print(f"  warm-up {e}: ok ({r['ms']:.0f} ms)")
 
     meta = {
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "dataset": "SQuAD 2.0 dev (CC BY-SA 4.0)", "articles": ARTICLES,
         "top_k": args.top_k, "chunk_size": 800, "overlap": 150,
-        "claude_model": generator.MODEL, "claude_effort": generator.EFFORT,
+        "claude_model": generator.MODEL, "claude_effort": generator.EFFORT, "local_model": local_llm.MODEL,
         "jev_threshold": jev.ANSWERABLE_THRESHOLD, "engines": [] if args.dry_run else engines,
         "dry_run": args.dry_run, "total": len(questions),
     }

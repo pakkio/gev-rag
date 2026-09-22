@@ -2,14 +2,15 @@
 (name, duration, details) so the UI can show exactly what happened.
 
   INGEST:  file -> load -> chunk -> embed -> store
-  QUERY:   question -> embed -> retrieve -> augment (build prompt) -> generate   (Claude)
+  QUERY:   question -> embed -> retrieve -> augment (build prompt) -> generate   (Claude, or a
+                                        |                                          local LLM)
                                         \-> select (pick a sentence)              (Jev)
 """
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from . import chunker, embedder, generator, jev, loader
+from . import chunker, embedder, generator, jev, loader, local_llm
 from .store import VectorStore
 
 store = VectorStore()
@@ -79,6 +80,18 @@ def answer_with_claude(question: str, hits: list, trace: Trace) -> dict:
             "ms": round(sum(s["ms"] for s in trace.steps[-2:]), 1), "usage": result["usage"]}
 
 
+def answer_with_local(question: str, hits: list, trace: Trace) -> dict:
+    t = time.perf_counter()
+    prompt = generator.build_prompt(question, hits)
+    trace.step("augment", t, system=generator.SYSTEM_PROMPT, prompt=prompt, prompt_chars=len(prompt))
+
+    t = time.perf_counter()
+    result = local_llm.generate(prompt)
+    trace.step("generate_local", t, model=result["model"] or "(disabled)", usage=result["usage"])
+    return {"engine": "local", "answer": result["answer"], "abstained": result["abstained"],
+            "ms": round(sum(s["ms"] for s in trace.steps[-2:]), 1), "usage": result["usage"]}
+
+
 def answer_with_jev(question: str, hits: list, trace: Trace) -> dict:
     t = time.perf_counter()
     result = jev.fast_answer(question, hits)
@@ -88,20 +101,21 @@ def answer_with_jev(question: str, hits: list, trace: Trace) -> dict:
             "answerable": result["answerable"], "confidence": result["confidence"]}
 
 
-def ask(question: str, top_k: int, mode: str = "claude") -> dict:
+ENGINES = {"claude": answer_with_claude, "local": answer_with_local, "jev": answer_with_jev}
+
+
+def ask(question: str, top_k: int, engines: list) -> dict:
     trace = Trace()
     hits = retrieve(question, top_k, trace)
     if not hits:
-        return {"answers": [{"engine": mode, "answer": "No documents yet. Upload a file first."}],
+        return {"answers": [{"engine": engines[0], "answer": "No documents yet. Upload a file first."}],
                 "sources": [], "trace": trace.steps}
 
-    engines = {"claude": [answer_with_claude], "jev": [answer_with_jev],
-               "both": [answer_with_claude, answer_with_jev]}[mode]
-    # Each engine gets its own trace so their timings don't mix; in "both"
-    # mode they run in parallel, as a real app would.
+    # Each engine gets its own trace so their timings don't mix; when several
+    # are selected they run in parallel, as a real app would.
     branch_traces = [Trace() for _ in engines]
     with ThreadPoolExecutor(max_workers=len(engines)) as pool:
-        answers = list(pool.map(lambda fe: fe[0](question, hits, fe[1]), zip(engines, branch_traces)))
+        answers = list(pool.map(lambda et: ENGINES[et[0]](question, hits, et[1]), zip(engines, branch_traces)))
     for bt in branch_traces:
         trace.steps.extend(bt.steps)
 

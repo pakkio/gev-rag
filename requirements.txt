@@ -6,3 +6,4 @@ numpy
 fastembed
 anthropic
 typesafe-sdk
+ollama
