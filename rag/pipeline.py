@@ -10,7 +10,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from . import chunker, embedder, generator, jev, loader, local_llm
+from . import chunker, embedder, gemini_llm, generator, jev, loader, local_llm, summarizer, summary_store
 from .store import VectorStore
 
 store = VectorStore()
@@ -92,6 +92,18 @@ def answer_with_local(question: str, hits: list, trace: Trace) -> dict:
             "ms": round(sum(s["ms"] for s in trace.steps[-2:]), 1), "usage": result["usage"]}
 
 
+def answer_with_gemini(question: str, hits: list, trace: Trace) -> dict:
+    t = time.perf_counter()
+    prompt = generator.build_prompt(question, hits)
+    trace.step("augment", t, system=generator.SYSTEM_PROMPT, prompt=prompt, prompt_chars=len(prompt))
+
+    t = time.perf_counter()
+    result = gemini_llm.generate(prompt)
+    trace.step("generate_gemini", t, model=result["model"] or "(disabled)", usage=result["usage"])
+    return {"engine": "gemini", "answer": result["answer"], "abstained": result["abstained"],
+            "ms": round(sum(s["ms"] for s in trace.steps[-2:]), 1), "usage": result["usage"]}
+
+
 def answer_with_jev(question: str, hits: list, trace: Trace) -> dict:
     t = time.perf_counter()
     result = jev.fast_answer(question, hits)
@@ -101,7 +113,8 @@ def answer_with_jev(question: str, hits: list, trace: Trace) -> dict:
             "answerable": result["answerable"], "confidence": result["confidence"]}
 
 
-ENGINES = {"claude": answer_with_claude, "local": answer_with_local, "jev": answer_with_jev}
+ENGINES = {"claude": answer_with_claude, "local": answer_with_local, "jev": answer_with_jev,
+           "gemini": answer_with_gemini}
 
 
 def ask(question: str, top_k: int, engines: list) -> dict:
@@ -123,3 +136,60 @@ def ask(question: str, top_k: int, engines: list) -> dict:
                 "score": round(h["score"], 4)} for i, h in enumerate(hits, start=1)]
     return {"answers": answers, "sources": sources, "trace": trace.steps,
             "retrieval_ms": round(sum(s["ms"] for s in trace.steps[:2]), 1)}
+
+
+def _doc_chunks(doc_id: str) -> tuple[str, list[str]] | None:
+    """Ordered chunk texts for a doc_id, for whole-document reads (as opposed to
+    retrieve()'s top-k similarity search). Returns (doc_name, texts) or None."""
+    doc_chunks = [c for c in store.chunks if c["doc_id"] == doc_id]
+    if not doc_chunks:
+        return None
+    doc_chunks.sort(key=lambda c: c["chunk_index"])
+    return doc_chunks[0]["doc_name"], [c["text"] for c in doc_chunks]
+
+
+def summarize_doc(doc_id: str) -> dict:
+    """Map-reduce (or, when it fits, a single call) over a whole document into one
+    cached summary. Unlike retrieve/ask, this reads every chunk, not just the top-k."""
+    found = _doc_chunks(doc_id)
+    if found is None:
+        return {"error": "Document not found"}
+    doc_name, texts = found
+
+    result = summarizer.summarize(doc_name, texts)
+    if result["summary"] is None:
+        return {"error": result["error"], "trace": result["trace"]}
+
+    entry = {"doc_id": doc_id, "doc_name": doc_name, "summary": result["summary"],
+              "model": result["model"], "cost_usd": result["cost_usd"]}
+    summary_store.set(doc_id, entry)
+    return {**entry, "trace": result["trace"]}
+
+
+ASK_DOC_SYSTEM = (
+    "You are given the full text of a document. Answer the following question precisely "
+    "and concisely, grounded only in the document's content. If the answer is not in the "
+    "document, say so clearly rather than guessing. Answer in the same language as the "
+    "question.\n\nQuestion: {question}"
+)
+
+
+def ask_doc(doc_id: str, question: str) -> dict:
+    """One question against the WHOLE document (not top-k retrieval) — for questions
+    retrieve()/ask() structurally can't answer, like 'what is this book about' or
+    'does it mention X anywhere'. Not cached (unlike summarize_doc): the answer
+    depends on the question, so there's nothing fixed to cache per doc_id."""
+    found = _doc_chunks(doc_id)
+    if found is None:
+        return {"error": "Document not found"}
+    doc_name, texts = found
+
+    if not summarizer.fits_single_call(texts):
+        return {"error": "Document too large for a single whole-document call "
+                          "(no map-reduce fallback wired for open-ended questions yet)."}
+
+    out = summarizer.whole_document(texts, ASK_DOC_SYSTEM.format(question=question), max_tokens=1500)
+    if out["result"] is None:
+        return {"error": out["error"], "trace": out["trace"]}
+    return {"doc_id": doc_id, "doc_name": doc_name, "question": question, "answer": out["result"],
+            "model": out["model"], "cost_usd": out["cost_usd"], "trace": out["trace"]}

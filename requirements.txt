@@ -7,3 +7,4 @@ fastembed
 anthropic
 typesafe-sdk
 ollama
+requests

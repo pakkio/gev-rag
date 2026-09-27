@@ -160,7 +160,7 @@ def main():
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "dataset": "SQuAD 2.0 dev (CC BY-SA 4.0)", "articles": ARTICLES,
         "top_k": args.top_k, "chunk_size": 800, "overlap": 150,
-        "claude_model": generator.MODEL, "claude_effort": generator.EFFORT, "local_model": local_llm.MODEL,
+        "claude_model": generator.MODEL, "local_model": local_llm.MODEL,
         "jev_threshold": jev.ANSWERABLE_THRESHOLD, "engines": [] if args.dry_run else engines,
         "dry_run": args.dry_run, "total": len(questions),
     }

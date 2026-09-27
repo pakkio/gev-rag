@@ -5,3 +5,5 @@ data/
 __pycache__/
 datasets/
 sample_docs/squad/
+uploads/
+logs/

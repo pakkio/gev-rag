@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from rag import embedder, generator, jev, local_llm, pipeline  # noqa: E402
+from rag import embedder, gemini_llm, generator, jev, local_llm, pipeline, summary_store  # noqa: E402
 
 BENCH_RESULTS = ROOT / "data" / "bench_results.json"
 
@@ -36,7 +36,11 @@ app = FastAPI(title="Tiny RAG")
 class AskRequest(BaseModel):
     question: str
     top_k: int = 4
-    engines: list[Literal["claude", "local", "jev"]] = ["claude"]
+    engines: list[Literal["claude", "local", "jev", "gemini"]] = ["claude"]
+
+
+class AskDocRequest(BaseModel):
+    question: str
 
 
 @app.get("/")
@@ -50,6 +54,8 @@ def status():
         "llm_enabled": generator.llm_enabled(),
         "llm_model": generator.MODEL,
         "jev_enabled": jev.jev_enabled(),
+        "gemini_enabled": gemini_llm.gemini_enabled(),
+        "gemini_model": gemini_llm.MODEL,
         "local_model": local_llm.MODEL,
         "local": local_llm.local_status(),
         "embed_model": embedder.MODEL_NAME,
@@ -76,7 +82,34 @@ def delete_document(doc_id: str):
     removed = pipeline.store.delete_doc(doc_id)
     if not removed:
         raise HTTPException(404, "Document not found")
+    summary_store.delete(doc_id)
     return {"removed_chunks": removed}
+
+
+@app.get("/api/documents/{doc_id}/summary")
+def get_summary(doc_id: str):
+    entry = summary_store.get(doc_id)
+    if not entry:
+        raise HTTPException(404, "No summary yet — POST to this URL to build one")
+    return entry
+
+
+@app.post("/api/documents/{doc_id}/summary")
+def build_summary(doc_id: str):
+    result = pipeline.summarize_doc(doc_id)
+    if "error" in result:
+        raise HTTPException(404 if result["error"] == "Document not found" else 502, result["error"])
+    return result
+
+
+@app.post("/api/documents/{doc_id}/ask")
+def ask_doc(doc_id: str, req: AskDocRequest):
+    if not req.question.strip():
+        raise HTTPException(400, "Question is empty")
+    result = pipeline.ask_doc(doc_id, req.question.strip())
+    if "error" in result:
+        raise HTTPException(404 if result["error"] == "Document not found" else 502, result["error"])
+    return result
 
 
 @app.post("/api/ask")

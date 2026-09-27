@@ -7,9 +7,8 @@ import os
 
 import anthropic
 
-MODEL = "claude-opus-5"
-EFFORT = "low"  # factual lookups rarely need deep reasoning; raise for harder questions
-PRICE_PER_MTOK = {"input": 5.00, "output": 25.00}  # claude-opus-5, USD
+MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5")  # cheap: citation QA doesn't need Opus
+PRICE_PER_MTOK = {"input": 1.00, "output": 5.00}  # claude-haiku-4-5, USD
 ABSTAIN_PREFIX = "Not in the documents."
 
 SYSTEM_PROMPT = f"""You answer questions using only the numbered context passages provided.
@@ -43,15 +42,11 @@ def generate(prompt: str) -> dict:
 
     client = anthropic.Anthropic()
     try:
-        response = client.beta.messages.create(
+        response = client.messages.create(
             model=MODEL,
-            max_tokens=16000,
+            max_tokens=1024,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": EFFORT},
-            # If a safety classifier declines, the API retries on a fallback model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
         )
     except anthropic.AuthenticationError:
         return {"answer": "Invalid API key. Check ANTHROPIC_API_KEY.", "model": None, "usage": None}
