@@ -4,15 +4,16 @@ A small, readable Retrieval-Augmented Generation (RAG) web app. You upload docum
 questions, and get answers with citations. The right-hand panel shows each pipeline step: its
 timing, inputs and outputs.
 
-It compares three ways to produce the final answer:
+It compares four ways to produce the final answer:
 
 | Engine | What it does | Runs on | Cost |
 |---|---|---|---|
 | **Local LLM** (default: `qwen3:14b`) | Writes an answer with `[n]` citations | Your GPU, via [Ollama](https://ollama.com) | Free |
 | **Jev** ([TypeSafe](https://docs.typesafe.ai)) | *Selects* the sentence that answers the question, or says "not in the documents" | TypeSafe API | Per token |
+| **Gemini** (`gemini-2.5-flash-lite`, via [OpenRouter](https://openrouter.ai)) | Writes an answer with `[n]` citations | OpenRouter API | Per token, ~$0.10/$0.40 per MTok in/out |
 | **Claude** (optional, off by default) | Writes an answer with `[n]` citations | Anthropic API | Per token, prepaid credits |
 
-**Stack:** FastAPI · fastembed (local ONNX embeddings) · a numpy vector store · Ollama · TypeSafe SDK · Anthropic SDK · vanilla HTML/JS. Requires **Python 3.10+**.
+**Stack:** FastAPI · fastembed (local ONNX embeddings) · a numpy vector store · Ollama · TypeSafe SDK · Anthropic SDK · OpenRouter (Gemini) · vanilla HTML/JS. Requires **Python 3.10+**. A [`justfile`](justfile) wraps the common commands (see below).
 
 ## The RAG workflow
 
@@ -40,33 +41,62 @@ RAG has two pipelines. **Ingest** runs once per document. **Query** runs on ever
 | Store | `rag/store.py` | Append vectors + metadata, persist to `data/` | – |
 | Retrieve | `rag/store.py` | `scores = vectors @ query_vec`, take top-k | top-k |
 | Augment | `rag/generator.py` | Number the chunks `[1]..[k]` and wrap them in `<context>` | system prompt |
-| Generate | `rag/local_llm.py`, `rag/generator.py` | The LLM answers only from that context and cites `[n]` | model |
+| Generate | `rag/local_llm.py`, `rag/gemini_llm.py`, `rag/generator.py` | The LLM answers only from that context and cites `[n]` | model |
 | Select | `rag/jev.py` | Code splits chunks into sentences; in **one** request Jev judges "is the answer here?" (Noul) and "which sentence?" (Choice) | confidence threshold |
 
 `rag/pipeline.py` connects the steps and records the trace. `app.py` is the HTTP API.
 
+### Beyond top-k: whole-document questions
+
+`/api/ask` only ever sees the top-k retrieved chunks, so a question like "what is this
+document about?" has no single matching chunk. `rag/summarizer.py` reads the whole
+document instead, via the Gemini engine (cheapest wired-up LLM, 1M-token context):
+
+- **Summary** (`POST /api/documents/{doc_id}/summary`) — builds and caches
+  (`rag/summary_store.py`, `data/summaries.json`) a map-reduce summary over every chunk.
+  One call if the document fits Gemini's context window, otherwise batched map-reduce
+  with hierarchical reduction. Read it back with `GET` on the same URL.
+- **Ask the whole document** (`POST /api/documents/{doc_id}/ask`) — answers one question
+  against the full document text in a single call. Not cached (the answer depends on the
+  question). Only works when the document fits in one call; there's no map-reduce
+  fallback for open-ended questions yet.
+
 ## Setup
 
+Uses [`just`](https://github.com/casey/just) + [`uv`](https://github.com/astral-sh/uv):
+
 ```bash
-git clone https://github.com/HyeranPark99/tiny-rag-jev.git
-cd tiny-rag-jev
+git clone git@github.com:pakkio/gev-rag.git
+cd jev-rag
+just setup
+```
+
+Without `just`/`uv`, the equivalent is a plain venv:
+
+```bash
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip install -r requirements.txt
 ```
 
 **Local LLM:** install [Ollama](https://ollama.com), then pull the model (~9 GB; fits a 16 GB GPU):
 
 ```bash
-ollama pull qwen3:14b
+just pull-model          # or: ollama pull qwen3:14b
 ```
 
-On a smaller GPU, use `qwen3:8b` (~5 GB) and set `OLLAMA_MODEL=qwen3:8b` in `.env`.
+On a smaller GPU, use `just pull-model qwen3:8b` (~5 GB) and set `OLLAMA_MODEL=qwen3:8b` in `.env`.
 
 **Keys:** create `.env` in the project folder:
 
 ```
 # Jev (from https://console.typesafe.ai)
 TYPESAFE_API_KEY=...
+
+# Gemini via OpenRouter (from https://openrouter.ai/keys) — also powers
+# document summaries and whole-document Q&A
+OPENROUTER_API_KEY=...
+# Optional: a different OpenRouter model (default google/gemini-2.5-flash-lite)
+# OPENROUTER_MODEL=...
 
 # Optional: a different local model (default qwen3:14b)
 # OLLAMA_MODEL=qwen3:8b
@@ -82,32 +112,52 @@ and needs prepaid credits (https://console.anthropic.com → Billing).
 ## Run it
 
 ```bash
-.venv\Scripts\python app.py
+just run          # or: .venv/bin/python app.py
 ```
 
 Open http://localhost:8000.
 
 - The header badges show which engines are on. Hover an "off" badge to see why.
 - Upload a `.txt` / `.md` / `.pdf`, or use the SQuAD articles the benchmark loads (see below).
-- Under the chat box, toggle any combination of **Local LLM**, **Jev** and **Claude**. With two or more selected, answers appear side by side with timing bars.
+- Under the chat box, toggle any combination of **Local LLM**, **Jev**, **Gemini** and **Claude**. With two or more selected, answers appear side by side with timing bars.
 
 The first local answer after startup includes loading the model into VRAM (~20–30 s). After that it stays loaded for 30 minutes.
+
+### CLI (justfile)
+
+`just --list` shows all recipes. The main ones, against a running `just run` server:
+
+| Recipe | What it does |
+|---|---|
+| `just setup` | Create/refresh the venv and install deps (`uv`) |
+| `just pull-model [model]` | `ollama pull` the local model (default `qwen3:14b`) |
+| `just run` | Start the FastAPI app |
+| `just status` | Engine status + ingested documents |
+| `just ingest <files...>` | Upload one or more documents |
+| `just ask "<question>" [engines]` | Ask a question (`engines` default: `jev`) |
+| `just ask-doc <doc_id> "<question>"` | Whole-document question (not top-k retrieval) |
+| `just summarize <doc_id>` | Build (or rebuild) a whole-document summary |
+| `just doc-summary <doc_id>` | Read a previously built summary |
+| `just delete-doc <doc_id>` | Remove an ingested document |
+| `just bench-dry` | Dry-run benchmark (no API calls) |
 
 ## Benchmark: generate vs select on SQuAD 2.0
 
 [SQuAD 2.0](https://rajpurkar.github.io/SQuAD-explorer/) is a public set of Wikipedia questions with gold answers (CC BY-SA 4.0). It includes *unanswerable* questions written to sound answerable, which tests whether an engine will say "not in the documents" instead of guessing.
 
 ```bash
-.venv\Scripts\python bench.py --dry-run
+just bench-dry          # or: uv run python bench.py --dry-run
 ```
 Downloads SQuAD, ingests 5 articles and checks retrieval, with no API calls.
 
 ```bash
-.venv\Scripts\python bench.py
+uv run python bench.py
 ```
-Runs 60 questions (40 answerable, 20 unanswerable) through every enabled engine. Then open http://localhost:8000/bench.
+Runs 60 questions (40 answerable, 20 unanswerable) through every enabled engine (Claude, local,
+Jev — Gemini isn't auto-detected as "enabled" yet, but can be added explicitly). Then open
+http://localhost:8000/bench.
 
-Every engine gets the same retrieved chunks, so only the answer step is compared. To pick engines, use `--engines local,jev`. For a different question sample, use `--seed 11`.
+Every engine gets the same retrieved chunks, so only the answer step is compared. To pick engines, use `--engines local,jev` (or include `gemini`). For a different question sample, use `--seed 11`.
 
 ### Results (qwen3:14b on an RTX 5070 Ti vs Jev, 60 questions)
 
