@@ -140,6 +140,7 @@ The first local answer after startup includes loading the model into VRAM (~20â€
 | `just doc-summary <doc_id>` | Read a previously built summary |
 | `just delete-doc <doc_id>` | Remove an ingested document |
 | `just bench-dry` | Dry-run benchmark (no API calls) |
+| `just book-bench [engine] [lang]` | 20-question benchmark against the ingested book (`book_questions/`, `en`/`it`) |
 
 ## Benchmark: generate vs select on SQuAD 2.0
 

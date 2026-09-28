@@ -10,6 +10,12 @@ import anthropic
 MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5")  # cheap: citation QA doesn't need Opus
 PRICE_PER_MTOK = {"input": 1.00, "output": 5.00}  # claude-haiku-4-5, USD
 ABSTAIN_PREFIX = "Not in the documents."
+# Smaller/weaker models sometimes paraphrase the refusal instead of using
+# ABSTAIN_PREFIX verbatim (e.g. "The text does not specify...") despite the
+# system prompt instructing them to start with it exactly. Check a couple of
+# common paraphrases too, so the abstained flag isn't wrong just because a
+# model didn't follow the format instruction to the letter.
+_ABSTAIN_MARKERS = (ABSTAIN_PREFIX.lower(), "does not specify", "does not mention", "not stated in")
 
 SYSTEM_PROMPT = f"""You answer questions using only the numbered context passages provided.
 - Cite passages inline like [1] or [2][3] right after the facts they support.
@@ -22,6 +28,10 @@ def llm_enabled() -> bool:
     # needs prepaid credits. Set CLAUDE_ENABLED=true in .env once you have them.
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
     return has_key and os.environ.get("CLAUDE_ENABLED", "false").lower() == "true"
+
+
+def is_abstained(answer: str) -> bool:
+    return any(m in answer.strip().lower()[:120] for m in _ABSTAIN_MARKERS)
 
 
 def build_prompt(question: str, hits: list) -> str:
@@ -65,7 +75,7 @@ def generate(prompt: str) -> dict:
     cost = (usage.input_tokens * PRICE_PER_MTOK["input"] + usage.output_tokens * PRICE_PER_MTOK["output"]) / 1e6
     return {
         "answer": answer,
-        "abstained": answer.strip().startswith(ABSTAIN_PREFIX),
+        "abstained": is_abstained(answer),
         "model": response.model,
         "usage": {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
                   "cost_usd": round(cost, 6)},

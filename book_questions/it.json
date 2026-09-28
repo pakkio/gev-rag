@@ -1,0 +1,151 @@
+[
+ {
+  "q": "Quanti passeggeri può trasportare il veicolo a tubo pneumatico per corsa?",
+  "kw": [
+   "800",
+   "eight hundred",
+   "ottocento"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "A che velocità, in leghe all'ora, viaggia il veicolo a tubo?",
+  "kw": [
+   "400",
+   "four hundred",
+   "quattrocento"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quanti cilindri proietta contemporaneamente il sistema a tubo?",
+  "kw": [
+   "40",
+   "forty",
+   "quaranta"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quanti minuti ha impiegato l'aerocarrozza per raggiungere il palazzo del governo?",
+  "kw": [
+   "15",
+   "fifteen",
+   "quindici"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Che cosa ha sostituito le corse dei cavalli, secondo il testo?",
+  "kw": [
+   "aerostat"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Che cosa alimenta il tramway che attraversa le gallerie del museo?",
+  "kw": [
+   "electric",
+   "elettricit"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Da quale galleria parte ogni ora il tramway del museo?",
+  "kw": [
+   "ancient",
+   "antichi"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quale corona erediterà il figlio di Filippo?",
+  "kw": [
+   "tahiti",
+   "taiti"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Per quale data è annunciata ufficialmente l'inaugurazione del nuovo continente?",
+  "kw": [
+   "1960",
+   "gennaio",
+   "gennajo",
+   "january"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Secondo il capitano, da quali isole provengono probabilmente i ladri?",
+  "kw": [
+   "galapago",
+   "gallapago"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Qual è il nome ufficiale dell'istituto (non il conservatorio di musica) a cui il banchiere manda Elena?",
+  "kw": [
+   "conservatorio politico",
+   "political conservatory"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "In quale anno è ambientata la rivoluzione descritta nel capitolo con le guardie delle barricate?",
+  "kw": [
+   "1953"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quale oggetto risulta trafitto dalla spada di Elena al posto della sua rivale?",
+  "kw": [
+   "ombrello",
+   "parapioggia",
+   "parasol",
+   "umbrella"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "A chi viene attribuita l'invenzione della storia di Waterloo per uno dei suoi romanzi?",
+  "kw": [
+   "hugo"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quale famiglia è attesa per cena quella sera a casa Ponto?",
+  "kw": [
+   "cardonnaz"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Quanto costava un biglietto per il tubo transatlantico?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "Qual è la velocità massima esatta dell'aero-yacht in chilometri orari?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "Quanti studenti sono iscritti al Conservatorio Politico?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "Chi ha vinto infine il duello di spada tra Elena e la signora di Saint-Panachard?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "In che anno è stata fondata originariamente la banca del signor Ponto?",
+  "kw": [],
+  "answerable": false
+ }
+]

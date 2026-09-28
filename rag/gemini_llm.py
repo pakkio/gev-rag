@@ -87,7 +87,7 @@ def generate(prompt: str) -> dict:
         return {"answer": result["answer"], "abstained": None, "model": None, "usage": None}
     return {
         "answer": result["answer"],
-        "abstained": result["answer"].startswith(generator.ABSTAIN_PREFIX),
+        "abstained": generator.is_abstained(result["answer"]),
         "model": result["model"],
         "usage": result["usage"],
     }

@@ -51,6 +51,12 @@ delete-doc doc_id:
 bench-dry:
     uv run python bench.py --dry-run
 
+# Hand-written 20-question benchmark against the currently ingested book
+# (book_questions/*.json — see book_bench.py). engine: claude|local|jev|gemini, lang: en|it
+# usage: just book-bench local it
+book-bench engine="jev" lang="en":
+    uv run python book_bench.py --engine {{engine}} --lang {{lang}}
+
 # Build (or rebuild) a whole-document summary via map-reduce over every chunk
 # usage: just summarize a21a8af1
 summarize doc_id:

@@ -43,7 +43,7 @@ def generate(prompt: str) -> dict:
     answer = response.message.content.strip()
     return {
         "answer": answer,
-        "abstained": answer.startswith(generator.ABSTAIN_PREFIX),
+        "abstained": generator.is_abstained(answer),
         "model": MODEL,
         "usage": {
             "input_tokens": response.prompt_eval_count,

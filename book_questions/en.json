@@ -1,0 +1,151 @@
+[
+ {
+  "q": "How many passengers can the pneumatic tube vehicle carry per trip?",
+  "kw": [
+   "800",
+   "eight hundred",
+   "ottocento"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "At what speed, in leagues per hour, does the tube vehicle travel?",
+  "kw": [
+   "400",
+   "four hundred",
+   "quattrocento"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "How many cylinders does the tube system project at once?",
+  "kw": [
+   "40",
+   "forty",
+   "quaranta"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "How many minutes did the aerocarriage take to reach the government palace?",
+  "kw": [
+   "15",
+   "fifteen",
+   "quindici"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What replaced horse racing, according to the text?",
+  "kw": [
+   "aerostat"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What powers the tramway running through the museum's galleries?",
+  "kw": [
+   "electric",
+   "elettricit"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Which gallery does the museum tramway depart from every hour?",
+  "kw": [
+   "ancient",
+   "antichi"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What crown will Filippo's son inherit?",
+  "kw": [
+   "tahiti",
+   "taiti"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What date is the inauguration of the new continent officially announced for?",
+  "kw": [
+   "1960",
+   "gennaio",
+   "gennajo",
+   "january"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "According to the captain, which islands are the thieves likely from?",
+  "kw": [
+   "galapago",
+   "gallapago"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What is the official name of the institution (not the music conservatory) the banker sends Elena to?",
+  "kw": [
+   "conservatorio politico",
+   "political conservatory"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What year's revolution is depicted in the chapter with the barricade guards?",
+  "kw": [
+   "1953"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "What object turns out to be pierced by Elena's sword instead of her rival?",
+  "kw": [
+   "ombrello",
+   "parapioggia",
+   "parasol",
+   "umbrella"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Who is credited with inventing the Waterloo story for one of his novels?",
+  "kw": [
+   "hugo"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "Which family is expected for dinner that evening at the Ponto house?",
+  "kw": [
+   "cardonnaz"
+  ],
+  "answerable": true
+ },
+ {
+  "q": "How much did a ticket for the transatlantic tube cost?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "What is the exact top speed of the aero-yacht in kilometers per hour?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "How many students are enrolled at the Political Conservatory?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "Who ultimately won the sword duel between Elena and Mrs. Saint-Panachard?",
+  "kw": [],
+  "answerable": false
+ },
+ {
+  "q": "In what year was Mr. Ponto's bank originally founded?",
+  "kw": [],
+  "answerable": false
+ }
+]
