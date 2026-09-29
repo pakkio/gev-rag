@@ -3,7 +3,14 @@ uvicorn[standard]
 python-multipart
 pypdf
 numpy
-fastembed
+fastembed-gpu
+onnxruntime-gpu[cuda,cudnn]
+# The WSL NVIDIA driver (CUDA UMD 13.3) segfaults in cudaSetDevice with the 13.4 runtime
+# that onnxruntime-gpu pulls by default; 13.0 is what Ollama ships and works.
+nvidia-cuda-runtime==13.0.*
+nvidia-cublas==13.0.*
+nvidia-cuda-nvrtc==13.0.*
+nvidia-nvjitlink==13.0.*
 anthropic
 typesafe-sdk
 ollama

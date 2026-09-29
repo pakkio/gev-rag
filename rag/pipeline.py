@@ -6,11 +6,12 @@
                                         |                                          local LLM)
                                         \-> select (pick a sentence)              (Jev)
 """
+import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from . import chunker, embedder, gemini_llm, generator, jev, loader, local_llm, summarizer, summary_store
+from . import chapters, chunker, embedder, gemini_llm, generator, jev, loader, local_llm, summarizer, summary_store
 from .store import VectorStore
 
 store = VectorStore()
@@ -46,7 +47,7 @@ def ingest(filename: str, data: bytes, chunk_size: int, overlap: int) -> dict:
     t = time.perf_counter()
     doc_id = uuid.uuid4().hex[:8]
     store.add(vectors, [
-        {"doc_id": doc_id, "doc_name": filename, "chunk_index": i, "text": c}
+        {"doc_id": doc_id, "doc_name": filename, "chunk_index": i, "text": c, "pages": loaded["pages"]}
         for i, c in enumerate(chunks)
     ])
     trace.step("store", t, doc_id=doc_id, total_chunks_in_store=len(store.chunks))
@@ -62,8 +63,11 @@ def retrieve(question: str, top_k: int, trace: Trace) -> list:
 
     t = time.perf_counter()
     hits = store.search(qvec, top_k)
+    cards = summary_store.all()
+    for h in hits:
+        h["chapter"] = chapters.chapter_of(cards.get(h["doc_id"], {}).get("chapters", []), h["chunk_index"])
     trace.step("retrieve", t, top_k=top_k, searched=len(store.chunks),
-               hits=[{"doc_name": h["doc_name"], "chunk_index": h["chunk_index"],
+               hits=[{"doc_name": h["doc_name"], "chunk_index": h["chunk_index"], "chapter": h["chapter"],
                       "score": round(h["score"], 4), "text": h["text"]} for h in hits])
     return hits
 
@@ -132,7 +136,7 @@ def ask(question: str, top_k: int, engines: list) -> dict:
     for bt in branch_traces:
         trace.steps.extend(bt.steps)
 
-    sources = [{"n": i, "doc_name": h["doc_name"], "chunk_index": h["chunk_index"],
+    sources = [{"n": i, "doc_name": h["doc_name"], "chunk_index": h["chunk_index"], "chapter": h["chapter"],
                 "score": round(h["score"], 4)} for i, h in enumerate(hits, start=1)]
     return {"answers": answers, "sources": sources, "trace": trace.steps,
             "retrieval_ms": round(sum(s["ms"] for s in trace.steps[:2]), 1)}
@@ -161,9 +165,55 @@ def summarize_doc(doc_id: str) -> dict:
         return {"error": result["error"], "trace": result["trace"]}
 
     entry = {"doc_id": doc_id, "doc_name": doc_name, "summary": result["summary"],
-              "model": result["model"], "cost_usd": result["cost_usd"]}
+              "chapters": result["chapters"], "model": result["model"], "cost_usd": result["cost_usd"]}
     summary_store.set(doc_id, entry)
     return {**entry, "trace": result["trace"]}
+
+
+# Questions across the whole library ("which books are about revenge?") need the model to check
+# every card; gemini-2.5-flash-lite missed Moby Dick there. deepseek-v4-flash answered as well as
+# gemini-2.5-flash at ~0.3 cents a question (vs ~0.9); deepseek-v4.1-flash, a reasoning model,
+# spent max_tokens thinking and returned empty answers on list questions.
+ASK_ALL_MODEL = os.environ.get("ASK_ALL_MODEL", "deepseek/deepseek-v4-flash")
+ASK_ALL_SYSTEM = (
+    "You are given reference cards for every book in a library, numbered [1]..[n]. Answer the "
+    "question that follows the cards using only these cards, and cite the books you rely on as [n]. "
+    "Answer directly, without disclaimers, whenever the cards contain the answer; only if they "
+    "genuinely don't, say so instead of guessing. Answer in the same language as the question."
+)
+
+
+# "cloud" (ASK_ALL_MODEL via OpenRouter) or "local" (Ollama). Local needs a context as big as all
+# the cards (~30K tokens), which doesn't fit an 8 GB GPU next to the model: Ollama then silently
+# runs it on the CPU, at minutes per question.
+ASK_ALL_ENGINE = os.environ.get("ASK_ALL_ENGINE", "cloud")
+ASK_ALL_NUM_CTX = 40960  # 26 cards are ~30K tokens; Ollama silently truncates past num_ctx
+
+
+def ask_all(question: str, engine: str | None = None, model: str | None = None) -> dict:
+    """A question about the whole library ("which novels end with the hero's death?"), answered
+    from the cached per-book cards in one LLM call. Books without a card are reported, not
+    silently ignored, since the answer can't account for them."""
+    cards = summary_store.all()
+    docs = store.documents()
+    have = [d for d in docs if d["doc_id"] in cards]
+    missing = [d["name"] for d in docs if d["doc_id"] not in cards]
+    if not have:
+        return {"error": "No book cards yet — build them with `just summarize-all`."}
+    labeled = [f"[{i}] {d['name']}\n{cards[d['doc_id']]['summary']}" for i, d in enumerate(have, start=1)]
+    # The question goes after the ~30K tokens of cards, not in the system prompt before them:
+    # placed first, flash answered "the cards say nothing about Moby Dick" with card [22] on it.
+    content = "\n\n".join(labeled + [f"Question: {question}"])
+    t = time.perf_counter()
+    if (engine or ASK_ALL_ENGINE) == "cloud":
+        r = gemini_llm.chat(ASK_ALL_SYSTEM, content, max_tokens=2000, timeout=120, model=model or ASK_ALL_MODEL)
+    else:
+        r = local_llm.chat(ASK_ALL_SYSTEM, content, num_ctx=ASK_ALL_NUM_CTX, max_tokens=2000)
+    if r["error"]:
+        return {"error": r["answer"]}
+    return {"question": question, "answer": r["answer"], "books": [d["name"] for d in have],
+            "missing_cards": missing, "model": r["model"], "cost_usd": r["usage"]["cost_usd"],
+            "ms": round((time.perf_counter() - t) * 1000), "usage": r["usage"]}
 
 
 ASK_DOC_SYSTEM = (

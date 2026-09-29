@@ -36,7 +36,8 @@ def is_abstained(answer: str) -> bool:
 
 def build_prompt(question: str, hits: list) -> str:
     context = "\n\n".join(
-        f"[{i}] (source: {h['doc_name']}, chunk {h['chunk_index']})\n{h['text']}"
+        f"[{i}] (source: {h['doc_name']}, chunk {h['chunk_index']}"
+        f"{', ' + h['chapter'] if h.get('chapter') else ''})\n{h['text']}"
         for i, h in enumerate(hits, start=1)
     )
     return f"<context>\n{context}\n</context>\n\nQuestion: {question}"

@@ -24,26 +24,25 @@ def local_status() -> dict:
     return {"enabled": True, "reason": None}
 
 
-def generate(prompt: str) -> dict:
+def chat(system_prompt: str, user_content: str, num_ctx: int = 8192, max_tokens: int = 1024) -> dict:
+    """One request/response. Returns {answer, model, usage, error}. num_ctx must cover the whole
+    prompt: Ollama silently truncates what doesn't fit instead of failing."""
     status = local_status()
     if not status["enabled"]:
-        return {"answer": f"Local LLM is off: {status['reason']}.", "abstained": None, "model": None, "usage": None}
+        return {"answer": f"Local LLM is off: {status['reason']}.", "model": None, "usage": None, "error": True}
     try:
         response = _client.chat(
             model=MODEL,
-            messages=[{"role": "system", "content": generator.SYSTEM_PROMPT},
-                      {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": system_prompt},
+                      {"role": "user", "content": user_content}],
             think=False,                     # Qwen3 reasons by default; off = fast, direct answers
-            options={"temperature": 0, "num_ctx": 8192},
+            options={"temperature": 0, "num_ctx": num_ctx, "num_predict": max_tokens},
             keep_alive="30m",                # keep the model loaded in VRAM between questions
         )
     except (ollama.RequestError, ollama.ResponseError) as e:
-        return {"answer": f"Ollama error: {e}", "abstained": None, "model": None, "usage": None}
-
-    answer = response.message.content.strip()
+        return {"answer": f"Ollama error: {e}", "model": None, "usage": None, "error": True}
     return {
-        "answer": answer,
-        "abstained": generator.is_abstained(answer),
+        "answer": response.message.content.strip(),
         "model": MODEL,
         "usage": {
             "input_tokens": response.prompt_eval_count,
@@ -51,4 +50,13 @@ def generate(prompt: str) -> dict:
             "cost_usd": 0.0,
             "load_ms": round((response.load_duration or 0) / 1e6, 1),  # >0 means a cold start
         },
+        "error": False,
     }
+
+
+def generate(prompt: str) -> dict:
+    result = chat(generator.SYSTEM_PROMPT, prompt)
+    if result["error"]:
+        return {"answer": result["answer"], "abstained": None, "model": None, "usage": None}
+    return {"answer": result["answer"], "abstained": generator.is_abstained(result["answer"]),
+            "model": result["model"], "usage": result["usage"]}

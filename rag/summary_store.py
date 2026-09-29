@@ -23,6 +23,11 @@ def get(doc_id: str) -> dict | None:
         return _load().get(doc_id)
 
 
+def all() -> dict:
+    with _lock:
+        return _load()
+
+
 def set(doc_id: str, entry: dict):
     with _lock:
         data = _load()

@@ -6,6 +6,7 @@ metadata, persisted to ./data. Search = dot product against every row
 when you outgrow it.
 """
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -56,9 +57,14 @@ class VectorStore:
             top = np.argsort(-scores)[:top_k]
             return [{**self.chunks[i], "score": float(scores[i])} for i in top]
 
-    def documents(self) -> list:
+    def documents(self, pattern: str | None = None) -> list:
         docs = {}
         for c in self.chunks:
-            d = docs.setdefault(c["doc_id"], {"doc_id": c["doc_id"], "name": c["doc_name"], "chunks": 0})
+            d = docs.setdefault(c["doc_id"], {"doc_id": c["doc_id"], "name": c["doc_name"],
+                                               "chunks": 0, "pages": c.get("pages")})
             d["chunks"] += 1
-        return list(docs.values())
+        result = list(docs.values())
+        if pattern:
+            rx = re.compile(pattern, re.IGNORECASE)
+            result = [d for d in result if rx.search(d["name"])]
+        return result

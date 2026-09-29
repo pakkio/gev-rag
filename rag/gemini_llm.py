@@ -13,7 +13,7 @@ import requests
 from . import generator
 
 MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
-PRICE_PER_MTOK = {"input": 0.10, "output": 0.40}
+PRICE_PER_MTOK = {"input": 0.10, "output": 0.40}  # MODEL's price; only a fallback, see chat()
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -22,7 +22,7 @@ def gemini_enabled() -> bool:
 
 
 def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout: int = 60,
-         frequency_penalty: float = 0.0) -> dict:
+         frequency_penalty: float = 0.0, model: str | None = None) -> dict:
     """One request/response. Returns {answer, model, usage} or {answer, error: True}.
 
     max_tokens is a hard cap, not a default to leave unset: without one, a
@@ -48,7 +48,8 @@ def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout:
             API_URL,
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
             json={
-                "model": MODEL,
+                "model": model or MODEL,
+                "usage": {"include": True},  # OpenRouter then reports the real cost per call
                 "temperature": 0,
                 "frequency_penalty": frequency_penalty,
                 "max_tokens": max_tokens,
@@ -68,14 +69,20 @@ def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout:
         return {"answer": f"OpenRouter error: {data['error'].get('message', data['error'])}",
                 "model": None, "usage": None, "error": True}
 
-    answer = data["choices"][0]["message"]["content"].strip()
+    choice = data["choices"][0]
+    answer = (choice["message"].get("content") or "").strip()
+    if not answer:  # some models occasionally return content: null (e.g. finish_reason "length")
+        return {"answer": f"OpenRouter returned an empty answer (finish_reason: {choice.get('finish_reason')}).",
+                "model": None, "usage": None, "error": True}
     usage = data.get("usage", {})
     input_tokens = usage.get("prompt_tokens", 0)
     output_tokens = usage.get("completion_tokens", 0)
-    cost = (input_tokens * PRICE_PER_MTOK["input"] + output_tokens * PRICE_PER_MTOK["output"]) / 1e6
+    cost = usage.get("cost")
+    if cost is None:
+        cost = (input_tokens * PRICE_PER_MTOK["input"] + output_tokens * PRICE_PER_MTOK["output"]) / 1e6
     return {
         "answer": answer,
-        "model": data.get("model", MODEL),
+        "model": data.get("model", model or MODEL),
         "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": round(cost, 6)},
         "error": False,
     }

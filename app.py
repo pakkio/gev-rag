@@ -36,11 +36,17 @@ app = FastAPI(title="Tiny RAG")
 class AskRequest(BaseModel):
     question: str
     top_k: int = 4
-    engines: list[Literal["claude", "local", "jev", "gemini"]] = ["claude"]
+    engines: list[Literal["claude", "local", "jev", "gemini"]] = ["jev", "local"]
 
 
 class AskDocRequest(BaseModel):
     question: str
+
+
+class AskAllRequest(BaseModel):
+    question: str
+    engine: Literal["cloud", "local"] | None = None  # defaults to pipeline.ASK_ALL_ENGINE
+    model: str | None = None  # for engine=cloud, an OpenRouter model id (default ASK_ALL_MODEL)
 
 
 @app.get("/")
@@ -62,6 +68,11 @@ def status():
         "documents": pipeline.store.documents(),
         "total_chunks": len(pipeline.store.chunks),
     }
+
+
+@app.get("/api/documents")
+def list_documents(q: str | None = None):
+    return {"documents": pipeline.store.documents(q)}
 
 
 @app.post("/api/upload")
@@ -109,6 +120,16 @@ def ask_doc(doc_id: str, req: AskDocRequest):
     result = pipeline.ask_doc(doc_id, req.question.strip())
     if "error" in result:
         raise HTTPException(404 if result["error"] == "Document not found" else 502, result["error"])
+    return result
+
+
+@app.post("/api/ask-all")
+def ask_all(req: AskAllRequest):
+    if not req.question.strip():
+        raise HTTPException(400, "Question is empty")
+    result = pipeline.ask_all(req.question.strip(), req.engine, req.model)
+    if "error" in result:
+        raise HTTPException(502, result["error"])
     return result
 
 
