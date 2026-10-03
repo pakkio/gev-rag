@@ -11,7 +11,11 @@ import numpy as np
 import onnxruntime as ort
 from fastembed import TextEmbedding
 
-MODEL_NAME = "BAAI/bge-small-en-v1.5"  # 384 dimensions
+# Multilingual: the library is mostly Italian. On the Robida question set the right passage
+# reached the top 12 for 30/30 questions vs 22/30 with the English-only bge-small-en-v1.5.
+# It reads only the first 128 tokens of a chunk. Changing the model means re-embedding the
+# whole store (vectors from different models aren't comparable).
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"  # 768 dimensions
 _CACHE = Path(__file__).resolve().parent.parent / "models"
 _model = None
 DEVICE = "cpu"
@@ -44,5 +48,5 @@ def embed_passages(texts: list) -> np.ndarray:
 
 
 def embed_query(text: str) -> np.ndarray:
-    # bge models use a slightly different encoding for queries vs passages.
+    # Some models (bge, e5) encode queries differently from passages; fastembed handles it.
     return _normalize(np.array(list(_get_model().query_embed([text])), dtype=np.float32))[0]

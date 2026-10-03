@@ -4,159 +4,310 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tiny RAG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --border: #e3e6eb; --text: #1c2330; --muted: #6b7482;
-    --accent: #3b6fe0; --accent-soft: #e8efff; --ok: #1f9d6b; --warn: #c7811a; --code: #f1f3f6;
-    --ingest: #7a5af5; --query: #0e9f9a; --jev: #d9480f; --local: #6f52e8;
+    --bg: #f4f6fb; --bg-2: #eaeefa; --panel: #ffffff; --panel-2: #f8f9fd; --border: #e2e7f1; --text: #131b2b; --muted: #5d6b80;
+    --accent: #5b5bf6; --accent-2: #a855f7; --accent-soft: #eeedfe; --ok: #109463; --bad: #e0424f; --warn: #c47b12; --code: #f3f5fa;
+    --ingest: #7a5cf8; --query: #0d9488; --jev: #ea580c; --local: #7c3aed; --gemini: #0284c7; --claude: #0d9488;
+    --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px -12px rgba(16, 24, 40, .14);
+    --shadow-lg: 0 2px 6px rgba(16, 24, 40, .05), 0 24px 48px -20px rgba(16, 24, 40, .25);
+    --radius: 16px;
+    interpolate-size: allow-keywords;  /* lets <details> animate to their natural height where supported */
+    color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1216; --panel: #171b21; --border: #2a3039; --text: #e4e8ee; --muted: #8b94a3;
-      --accent: #6d97ff; --accent-soft: #1c2740; --ok: #3cc58f; --warn: #e3a44a; --code: #1f242c;
-      --ingest: #9d85ff; --query: #35c7c1; --jev: #ff8a4c; --local: #8a74f0;
+      --bg: #0a0d14; --bg-2: #10142a; --panel: #121722; --panel-2: #161c29; --border: #222b3b; --text: #e8edf6; --muted: #8e9cb2;
+      --accent: #8b8cff; --accent-2: #c084fc; --accent-soft: #1d1f3d; --ok: #34d399; --bad: #fb7185; --warn: #f0b354; --code: #0e131c;
+      --ingest: #a78bfa; --query: #2dd4bf; --jev: #fb923c; --local: #a78bfa; --gemini: #38bdf8; --claude: #2dd4bf;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 28px -14px rgba(0, 0, 0, .7);
+      --shadow-lg: 0 4px 10px rgba(0, 0, 0, .4), 0 28px 56px -24px rgba(0, 0, 0, .8);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
-  header h1 { font-size: 17px; margin: 0; }
-  .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--code); color: var(--muted); }
-  .badge.on { color: var(--ok); } .badge.off { color: var(--warn); }
-  main { display: grid; grid-template-columns: 280px 1fr 420px; gap: 16px; padding: 16px; height: calc(100vh - 56px); }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow: auto; min-height: 0; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 10px; }
-  h2:not(:first-child) { margin-top: 22px; }
-  #drop { border: 2px dashed var(--border); border-radius: 8px; padding: 18px 10px; text-align: center; color: var(--muted); cursor: pointer; }
-  #drop.over { border-color: var(--accent); background: var(--accent-soft); }
-  label { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; }
-  input[type=number] { width: 80px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
-  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .doc { display: flex; justify-content: space-between; align-items: center; padding: 7px 8px; border-radius: 6px; background: var(--code); margin-bottom: 6px; font-size: 13px; gap: 6px; }
-  .doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .doc button { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 15px; }
-  .doc button:hover { color: #d33; }
-  #chat { display: flex; flex-direction: column; padding: 0; }
-  #messages { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 85%; padding: 10px 13px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; }
-  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
-  .msg.bot { align-self: flex-start; background: var(--code); }
-  .msg.bot .cite, .card .cite { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 3px; font-weight: 600; font-size: 12px; }
-  .sources { margin-top: 8px; font-size: 12px; color: var(--muted); white-space: normal; }
-  .empty { margin: auto; text-align: center; color: var(--muted); max-width: 360px; }
-  form#ask { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
-  form#ask input { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; }
-  button.primary { padding: 0 18px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
-  button.primary:disabled { opacity: .5; cursor: default; }
+  ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  *::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
+  html, body { height: 100%; }
+  body {
+    margin: 0; color: var(--text); font: 14.5px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+                radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 60%), var(--bg);
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+  }
+  button { font: inherit; }
 
-  /* Pipeline diagram */
-  .flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
-  .flow .tag { font-size: 11px; font-weight: 700; width: 52px; }
-  .flow.ingest .tag { color: var(--ingest); } .flow.query .tag { color: var(--query); }
-  .node { font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--muted); transition: all .25s; }
-  .arrow { color: var(--muted); font-size: 11px; }
+  /* ---------- header ---------- */
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+           background: color-mix(in srgb, var(--panel) 65%, transparent); backdrop-filter: blur(14px) saturate(1.4); z-index: 10; flex-wrap: wrap; }
+  header h1 { font-size: 16px; font-weight: 800; margin: 0 6px 0 0; letter-spacing: -.01em; display: flex; align-items: center; gap: 9px; }
+  header h1 .logo { width: 26px; height: 26px; border-radius: 8px; background: var(--grad); box-shadow: 0 6px 16px -6px var(--accent); display: grid; place-items: center; color: #fff; font-size: 13px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+           background: var(--panel); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .badge.on { color: var(--ok); } .badge.off { color: var(--warn); }
+  .toggle { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); border-radius: 10px;
+            padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; position: relative; transition: color .15s, border-color .15s, background .15s; }
+  .toggle:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .toggle .dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 2px var(--panel); display: none; }
+  .toggle.unseen .dot { display: block; animation: ping 1.4s infinite; }
+  @keyframes ping { 50% { transform: scale(1.35); opacity: .6; } }
+
+  /* ---------- layout ---------- */
+  main { flex: 1; min-height: 0; display: grid; gap: 14px; padding: 14px; grid-template-columns: 290px minmax(0, 1fr) 420px; transition: grid-template-columns .25s ease; }
+  body.hide-left main { grid-template-columns: 0 minmax(0, 1fr) 420px; }
+  body.hide-right main { grid-template-columns: 290px minmax(0, 1fr) 0; }
+  body.hide-left.hide-right main { grid-template-columns: 0 minmax(0, 1fr) 0; }
+  body.hide-left #left, body.hide-right #right { visibility: hidden; padding: 0; border-width: 0; }
+  .panel { background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+           box-shadow: var(--shadow); overflow: auto; min-height: 0; min-width: 0; scrollbar-gutter: stable; }
+  h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+  h2:not(:first-child) { margin-top: 22px; }
+
+  /* ---------- left: library ---------- */
+  #drop { border: 1.5px dashed color-mix(in srgb, var(--muted) 45%, var(--border)); border-radius: 14px; padding: 20px 12px; text-align: center; color: var(--muted);
+          cursor: pointer; background: var(--panel-2); transition: border-color .15s, background .15s, transform .15s; font-size: 13px; }
+  #drop:hover { border-color: var(--accent); color: var(--text); }
+  #drop.over { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.015); }
+  label { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  input[type=number] { width: 78px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 13px; }
+  input:focus-visible, button:focus-visible, textarea:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .doc { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid transparent;
+         margin-bottom: 5px; font-size: 12.5px; gap: 6px; transition: border-color .15s, background .15s; }
+  .doc:hover { border-color: var(--border); }
+  .doc.hit { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+  .doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc button { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; border-radius: 6px; padding: 2px 5px; opacity: .5; }
+  .doc:hover button { opacity: 1; }
+  .doc button:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+  /* ---------- center: chat ---------- */
+  #chat { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+  .chat-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .chat-head .title { font-weight: 700; font-size: 14px; }
+  .chat-head .sub { color: var(--muted); font-size: 12.5px; flex: 1; }
+  .chat-head a { color: var(--muted); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .chat-head a:hover { color: var(--accent); }
+  #clearBtn { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 8px 16px; font-weight: 700; font-size: 13px; color: #fff; cursor: pointer;
+              background: var(--grad); box-shadow: 0 8px 22px -10px var(--accent); transition: transform .15s, box-shadow .15s; }
+  #clearBtn:hover { transform: translateY(-1px); box-shadow: 0 12px 26px -10px var(--accent); }
+  #clearBtn kbd { font: 600 10.5px/1 Inter, system-ui, sans-serif; background: rgba(255,255,255,.22); border-radius: 5px; padding: 3px 5px; }
+  #clearBtn.nudge { animation: nudge 2.2s ease-in-out 2; }
+  @keyframes nudge { 0%, 100% { box-shadow: 0 8px 22px -10px var(--accent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px -10px var(--accent); } }
+  #messages { flex: 1; overflow: auto; scrollbar-gutter: stable both-edges; padding: 22px 18px 8px; }
+  .thread { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 78%; padding: 11px 15px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+  .msg.user { align-self: flex-end; background: var(--grad); color: #fff; border-bottom-right-radius: 5px; box-shadow: 0 10px 24px -14px var(--accent); }
+  .msg.user .understood { font-size: 12px; opacity: .85; margin-top: 4px; font-style: italic; }
+  .msg.bot { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border); border-bottom-left-radius: 5px; color: var(--muted); }
+  .cite { background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 0 4px; font-weight: 700; font-size: 11.5px; }
+  .empty { margin: 8vh auto 0; text-align: center; max-width: 560px; }
+  .empty h3 { font-size: 30px; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 10px; font-weight: 800;
+              background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .empty p { color: var(--muted); margin: 0 0 20px; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .suggest button { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 12px; padding: 8px 13px; font-size: 13px; cursor: pointer;
+                    box-shadow: var(--shadow); transition: transform .15s, border-color .15s; }
+  .suggest button:hover { transform: translateY(-2px); border-color: var(--accent); }
+
+  /* answer cards: one column in a narrow chat, two side by side when there's room */
+  .duo { align-self: stretch; container-type: inline-size; }
+  .duo-grid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
+  @container (inline-size > 760px) { .duo-grid.multi { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--eng, var(--accent)); }
+  .card.claude { --eng: var(--claude); } .card.gemini { --eng: var(--gemini); } .card.local { --eng: var(--local); } .card.jev { --eng: var(--jev); }
+  .card .who { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--eng); letter-spacing: .02em; }
+  .card .who span { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .card .who i { font-style: normal; display: inline-flex; gap: 3px; }
+  .card .who i::after { content: ""; width: 14px; height: 6px; background: radial-gradient(circle 2.5px, currentColor 95%, transparent) 0 50%/7px 6px repeat-x; animation: dots 1s steps(3) infinite; }
+  @keyframes dots { from { width: 0; } to { width: 21px; } }
+  .card .text { overflow-wrap: anywhere; line-height: 1.65; }
+  .card .text p { margin: 0 0 8px; } .card .text p:last-child { margin-bottom: 0; }
+  .card .text ul { margin: 4px 0 8px; padding-left: 20px; } .card .text li { margin: 2px 0; }
+  .card .meta { font-size: 11.5px; color: var(--muted); margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .draft { white-space: pre-wrap; }
+  .quote { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--jev); background: color-mix(in srgb, var(--jev) 7%, transparent);
+           border-radius: 0 10px 10px 0; font-style: italic; color: color-mix(in srgb, var(--text) 85%, var(--muted)); }
+  .quote p { margin: 0; }
+  .card .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 0 6px; }
+  .draft .s { transition: opacity .3s, color .3s; }
+  .draft .s.pending { opacity: .45; }
+  .draft .s.bad { text-decoration: line-through; color: var(--bad); opacity: .75; }
+  .guess { font-style: italic; color: color-mix(in srgb, var(--warn) 75%, var(--text)); background: color-mix(in srgb, var(--warn) 9%, transparent);
+           border-radius: 5px; padding: 0 2px; }
+  .tail { opacity: .35; }
+  .race { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .race .lane { display: grid; grid-template-columns: 90px 1fr 64px; align-items: center; gap: 8px; margin-top: 3px; }
+  .race .track { height: 7px; background: var(--code); border-radius: 4px; overflow: hidden; }
+  .race .track i { display: block; height: 100%; border-radius: 4px; }
+  .race .speedup { margin-top: 4px; color: var(--text); font-weight: 600; }
+  details.srcs { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  details.srcs summary { cursor: pointer; font-weight: 600; list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+  details.srcs summary::before { content: "▸"; transition: transform .2s; }
+  details.srcs[open] summary::before { transform: rotate(90deg); }
+  details.srcs::details-content { block-size: 0; overflow: hidden; transition: block-size .25s ease, content-visibility .25s allow-discrete; }
+  details.srcs[open]::details-content { block-size: auto; }
+  details.srcs .list { margin-top: 6px; line-height: 1.7; font-variant-numeric: tabular-nums; }
+
+  /* composer */
+  .composer { padding: 10px 18px 16px; }
+  .composer-box { max-width: 980px; margin: 0 auto; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-lg); padding: 8px 8px 8px 14px;
+                  transition: border-color .15s, box-shadow .15s; }
+  .composer-box:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent), var(--shadow-lg); }
+  form#ask { display: flex; gap: 8px; align-items: center; }
+  form#ask input { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; padding: 8px 0; outline: none; }
+  form#ask input:focus-visible { box-shadow: none; }  /* the whole composer box shows focus */
+  #askBtn { width: 40px; height: 40px; flex: none; border: 0; border-radius: 12px; background: var(--grad); color: #fff; cursor: pointer; display: grid; place-items: center;
+            box-shadow: 0 8px 18px -8px var(--accent); transition: transform .12s, opacity .12s; }
+  #askBtn:hover:not(:disabled) { transform: translateY(-1px); }
+  #askBtn:disabled { opacity: .5; cursor: default; }
+  .modes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .modes .lbl { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-right: 2px; }
+  .modes button { border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 99px; padding: 3px 11px; font-size: 12px; cursor: pointer; transition: all .15s; }
+  .modes button[data-engine="claude"] { --eng: var(--claude); } .modes button[data-engine="gemini"] { --eng: var(--gemini); }
+  .modes button[data-engine="local"] { --eng: var(--local); } .modes button[data-engine="jev"] { --eng: var(--jev); }
+  .modes button:hover:not(:disabled) { border-color: var(--eng); color: var(--eng); }
+  .modes button.active { background: color-mix(in srgb, var(--eng) 14%, transparent); color: var(--eng); border-color: color-mix(in srgb, var(--eng) 60%, transparent); font-weight: 700; }
+  .modes button:disabled { opacity: .35; cursor: not-allowed; }
+  .modes .hint { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; }
+
+  /* ---------- right: pipeline ---------- */
+  .flow { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+  .flow .tag { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; width: 54px; }
+  .flow.ingest .tag { color: var(--ingest); } .flow.query .tag { color: var(--query); } .flow.jev .tag { color: var(--jev); }
+  .node { font-size: 11.5px; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); transition: all .18s; }
+  .arrow { color: var(--muted); font-size: 11px; opacity: .7; }
   .flow.ingest .node.lit { background: var(--ingest); border-color: var(--ingest); color: #fff; }
   .flow.query .node.lit { background: var(--query); border-color: var(--query); color: #fff; }
-  .node.busy { animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: .4; } }
-
-  /* Trace cards */
-  .step { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
-  .step > summary { padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; list-style: none; }
+  .flow.jev .node.lit { background: var(--jev); border-color: var(--jev); color: #fff; }
+  .node.busy { animation: pulse 1.1s infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .step { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; overflow: hidden; background: var(--panel-2); }
+  .step[open] { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .step::details-content { block-size: 0; overflow: hidden; transition: block-size .25s ease, content-visibility .25s allow-discrete; }
+  .step[open]::details-content { block-size: auto; }
+  .step > summary { padding: 9px 11px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; list-style: none; font-size: 13px; }
   .step > summary::-webkit-details-marker { display: none; }
   .step .n { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; color: #fff; font-size: 11px; margin-right: 6px; }
-  .step.ingest .n { background: var(--ingest); } .step.query .n { background: var(--query); }
+  .step.ingest .n { background: var(--ingest); } .step.query .n { background: var(--query); } .step.jev .n { background: var(--jev); }
   .step .ms { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .step .body { padding: 0 10px 10px; font-size: 12.5px; }
+  .step .body { padding: 0 11px 11px; font-size: 12.5px; }
   .step .explain { color: var(--muted); margin: 0 0 8px; }
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
   .kv b { color: var(--muted); font-weight: 500; }
-  pre { background: var(--code); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; font-size: 11.5px; max-height: 220px; overflow: auto; margin: 6px 0 0; }
+  pre { background: var(--code); border: 1px solid var(--border); padding: 8px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; max-height: 220px; overflow: auto; margin: 6px 0 0; }
   .hit { margin-top: 8px; }
-  .bar { height: 6px; border-radius: 3px; background: var(--code); overflow: hidden; margin: 3px 0; }
-  .bar i { display: block; height: 100%; background: var(--query); }
+  .bar { height: 5px; border-radius: 3px; background: var(--code); overflow: hidden; margin: 3px 0; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--query), var(--accent)); }
   .placeholder { color: var(--muted); font-size: 13px; }
 
-  .modes { display: flex; gap: 4px; padding: 10px 12px 0; flex-wrap: wrap; }
-  .modes button { border: 1px solid var(--border); background: var(--panel); color: var(--muted); border-radius: 99px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
-  .modes .lbl { font-size: 12px; color: var(--muted); align-self: center; margin-right: 2px; }
-  .modes button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
-  .modes button:disabled { opacity: .4; cursor: not-allowed; }
-  .modes a { margin-left: auto; font-size: 12px; color: var(--accent); align-self: center; }
-  .flow.jev .tag { color: var(--jev); }
-  .flow.jev .node.lit { background: var(--jev); border-color: var(--jev); color: #fff; }
-  .step.jev .n { background: var(--jev); }
-  .duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-self: stretch; max-width: 100%; }
-  .card { background: var(--code); border-radius: 10px; padding: 10px 13px; white-space: pre-wrap; word-wrap: break-word; border-top: 3px solid var(--query); }
-  .card.jev { border-top-color: var(--jev); } .card.local { border-top-color: var(--local); }
-  .card .who { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; margin-bottom: 4px; white-space: normal; }
-  .card.claude .who { color: var(--query); } .card.jev .who { color: var(--jev); } .card.local .who { color: var(--local); }
-  .card .who span { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
-  .card .meta { font-size: 11.5px; color: var(--muted); margin-top: 6px; white-space: normal; }
-  .race { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
-  .race .lane { display: grid; grid-template-columns: 90px 1fr 64px; align-items: center; gap: 8px; margin-top: 3px; }
-  .race .track { height: 8px; background: var(--code); border-radius: 4px; overflow: hidden; }
-  .race .track i { display: block; height: 100%; border-radius: 4px; }
-  .race .speedup { margin-top: 4px; color: var(--text); font-weight: 600; }
-
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   @media (max-width: 1100px) {
-    main { grid-template-columns: 1fr; height: auto; padding: 16px; }
-    .duo { grid-template-columns: 1fr; }
-    #chat { height: 70vh; }
+    body { overflow: auto; height: auto; }
+    main, body.hide-left main, body.hide-right main, body.hide-left.hide-right main { grid-template-columns: 1fr; }
+    body.hide-left #left, body.hide-right #right { display: none; }
+    #chat { height: 82dvh; order: -1; }
+    header { padding: 10px 16px; }
+    .badges { display: none; }
+    .msg { max-width: 92%; }
+  }
+  @media (max-width: 640px) {
+    .chat-head { padding: 10px 12px; }
+    .chat-head .sub, .chat-head a, #clearBtn kbd { display: none; }
+    .chat-head .title { flex: 1; }
+    #messages { padding: 14px 10px 6px; }
+    .composer { padding: 8px 10px 12px; }
+    .empty h3 { font-size: 24px; }
   }
 </style>
 </head>
-<body>
+<body class="hide-right">
 <header>
-  <h1>Tiny RAG</h1>
-  <span class="badge" id="embedBadge">embeddings: …</span>
-  <span class="badge" id="llmBadge">LLM: …</span>
-  <span class="badge" id="jevBadge">Jev: …</span>
-  <span class="badge" id="localBadge">Local: …</span>
-  <span class="badge" id="countBadge">0 chunks</span>
+  <h1><span class="logo">◆</span>Tiny RAG</h1>
+  <button type="button" class="toggle" id="toggleLeft" aria-pressed="true" title="Show or hide the library">☰ Library</button>
+  <div class="badges">
+    <span class="badge" id="embedBadge">embeddings: …</span>
+    <span class="badge" id="llmBadge">LLM: …</span>
+    <span class="badge" id="gemBadge">Gemini: …</span>
+    <span class="badge" id="jevBadge">Jev: …</span>
+    <span class="badge" id="localBadge">Local: …</span>
+    <span class="badge" id="countBadge">0 chunks</span>
+  </div>
+  <button type="button" class="toggle" id="toggleRight" aria-pressed="false" title="Show or hide the pipeline trace">Pipeline ⟶<span class="dot"></span></button>
 </header>
 
 <main>
   <!-- LEFT: documents -->
-  <section class="panel">
-    <h2>1 · Add documents</h2>
+  <section class="panel" id="left">
+    <h2>Add documents</h2>
     <div id="drop">Drop .txt / .md / .pdf here<br>or click to choose</div>
     <input type="file" id="file" multiple accept=".txt,.md,.pdf" hidden>
     <label>Chunk size (chars) <input type="number" id="chunkSize" value="800" min="100" max="4000" step="50"></label>
     <label>Overlap (chars) <input type="number" id="overlap" value="150" min="0" max="1000" step="25"></label>
     <div class="hint">Smaller chunks = more precise retrieval, less context per hit.</div>
 
+    <h2>Retrieval</h2>
+    <label>Top-k chunks <input type="number" id="topK" value="12" min="1" max="16"></label>
+    <div class="hint">How many of the most similar chunks get sent to the LLM.</div>
+
     <h2>Knowledge base</h2>
     <div id="docs"><div class="placeholder">No documents yet.</div></div>
-
-    <h2>2 · Retrieval</h2>
-    <label>Top-k chunks <input type="number" id="topK" value="4" min="1" max="10"></label>
-    <div class="hint">How many of the most similar chunks get sent to the LLM.</div>
   </section>
 
   <!-- CENTER: chat -->
   <section class="panel" id="chat">
+    <div class="chat-head">
+      <span class="title">Chat</span>
+      <span class="sub" id="chatSub">Ask anything about your library</span>
+      <a href="/bench">Benchmark →</a>
+      <button type="button" id="clearBtn" title="Start a new conversation (clears messages and highlights)">＋ New chat <kbd>Ctrl K</kbd></button>
+    </div>
     <div id="messages">
-      <div class="empty" id="emptyState">
-        <p><b>Ask questions about your documents.</b></p>
-        <p>Upload a file on the left (try <code>sample_docs/</code>), then ask something. Watch the right panel to see every pipeline step.</p>
+      <div class="thread" id="thread">
+        <div class="empty" id="emptyState">
+          <h3>Ask your books anything.</h3>
+          <p>Answers come from your documents, with citations. Jev quotes the exact sentence; when no single sentence answers, an LLM drafts and Jev checks every line.</p>
+          <div class="suggest">
+            <button type="button">Chi è Justin in Madame Bovary?</button>
+            <button type="button">Come muore Emma Bovary?</button>
+            <button type="button">Who is Captain Ahab?</button>
+            <button type="button">Chi è Anna Karenina?</button>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="modes" id="modes">
-      <span class="lbl">Engines:</span>
-      <button type="button" data-engine="claude">Claude · generate</button>
-      <button type="button" data-engine="local">Local LLM · generate</button>
-      <button type="button" data-engine="jev">Jev · select</button>
-      <a href="/bench">Benchmark →</a>
+    <div class="composer">
+      <div class="composer-box">
+        <form id="ask">
+          <input id="question" placeholder="Ask a question about your documents…" autocomplete="off">
+          <button id="askBtn" title="Ask (Enter)" aria-label="Ask">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
+        <div class="modes" id="modes">
+          <span class="lbl">Engines</span>
+          <button type="button" data-engine="claude" title="Include in this question's answer">Claude</button>
+          <button type="button" data-engine="gemini" title="Include in this question's answer">Flash</button>
+          <button type="button" data-engine="local" title="Include in this question's answer">Local LLM</button>
+          <button type="button" data-engine="jev" title="Include in this question's answer">Jev</button>
+          <span class="hint" id="engHints"></span>
+        </div>
+      </div>
     </div>
-    <form id="ask">
-      <input id="question" placeholder="Ask a question about your documents…" autocomplete="off">
-      <button class="primary" id="askBtn">Ask</button>
-    </form>
   </section>
 
   <!-- RIGHT: pipeline -->
-  <section class="panel">
+  <section class="panel" id="right">
     <h2>RAG pipeline</h2>
     <div class="flow ingest" id="flowIngest">
       <span class="tag">INGEST</span>
@@ -171,13 +322,12 @@
       <span class="node" data-s="retrieve">Retrieve</span><span class="arrow">→</span>
       <span class="node" data-s="augment">Augment</span><span class="arrow">→</span>
       <span class="node" data-s="generate">Generate</span>
-      <span class="arrow">(Claude or local LLM)</span>
     </div>
     <div class="flow jev" id="flowJev">
       <span class="tag">JEV</span>
       <span class="arrow">Retrieve →</span>
-      <span class="node" data-s="select">Select sentence</span>
-      <span class="arrow">(replaces Augment + Generate)</span>
+      <span class="node" data-s="select">Select</span><span class="arrow">→</span>
+      <span class="node" data-s="verify">Verify draft</span>
     </div>
 
     <h2>Last run trace</h2>
@@ -200,6 +350,11 @@ const STEP_INFO = {
   augment:     ["Augment",  "query", "Paste the retrieved chunks into the prompt as numbered context."],
   generate:    ["Generate", "query", "The LLM answers using only that context, citing chunks as [n]."],
   generate_local: ["Generate (local)", "query", "An open model on your own GPU (via Ollama) answers from the same prompt Claude gets. Free and private."],
+  generate_gemini: ["Generate (Flash)", "query", "The fast OpenRouter LLM (OPENROUTER_MODEL, currently deepseek-v4-flash-0731) answers from the retrieved context, citing chunks as [n]."],
+  condense:    ["Follow-up", "query", "The question is rewritten to stand on its own using the earlier turns of this chat (who \"he\" or \"that book\" is), so retrieval and every engine know what it's about. New chat (Ctrl+K) clears the context."],
+  mentions:    ["Mentions", "jev", "Every passage naming the question's subject (as a whole word), not just the top-k: a person's description is spread over many passages. Runs in parallel with Jev's select."],
+  verify:      ["Verify (Jev)", "jev", "Jev checks each sentence of the LLM's draft against the passages it cites, as soon as it's written: supported facts stay, partly supported sentences or a character's guesses stay inside [[ ]], unsupported or uncited ones are removed."],
+  fallback:    ["Draft skipped", "jev", "Why the checked-draft fallback produced no answer."],
   select:      ["Select (Jev)", "jev", "Code splits the chunks into sentences. In one request Jev judges whether the answer is there at all (Noul) and which sentence gives it (Choice). The answer is copied verbatim, not written."],
 };
 
@@ -209,17 +364,22 @@ async function refreshStatus() {
   $("llmBadge").textContent = s.llm_enabled ? "Claude: " + s.llm_model : "Claude: off";
   $("llmBadge").title = s.llm_enabled ? "" : "Disabled. Set CLAUDE_ENABLED=true in .env (needs Anthropic API credits).";
   $("llmBadge").className = "badge " + (s.llm_enabled ? "on" : "off");
+  $("gemBadge").textContent = s.gemini_enabled ? "Flash: on" : "Flash: off (no key)";
+  $("gemBadge").title = s.gemini_enabled ? "Model: " + s.gemini_model : "";
+  $("gemBadge").className = "badge " + (s.gemini_enabled ? "on" : "off");
   $("countBadge").textContent = s.total_chunks + " chunks";
-  $("jevBadge").textContent = s.jev_enabled ? "Jev: on" : "Jev: off (no key)";
+  $("jevBadge").textContent = s.jev_enabled ? "Jev: on" : "Jev: " + (s.jev_reason || "off");
+  $("jevBadge").title = s.jev_enabled ? "" : "Add TYPESAFE_API_KEY to .env (or remove JEV_ENABLED=0).";
   $("jevBadge").className = "badge " + (s.jev_enabled ? "on" : "off");
   $("localBadge").textContent = s.local.enabled ? "Local: " + s.local_model : "Local: off";
   $("localBadge").title = s.local.reason || "";
   $("localBadge").className = "badge " + (s.local.enabled ? "on" : "off");
-  applyAvailability({ claude: s.llm_enabled, local: s.local.enabled, jev: s.jev_enabled },
+  applyAvailability({ claude: s.llm_enabled, gemini: s.gemini_enabled, local: s.local.enabled, jev: s.jev_enabled },
                     { claude: "Claude is disabled: set CLAUDE_ENABLED=true in .env (needs Anthropic API credits)",
-                      local: "Local LLM is off: " + (s.local.reason || ""), jev: "Jev is off: add TYPESAFE_API_KEY to .env" });
+                      gemini: "Gemini is off: add OPENROUTER_API_KEY to .env",
+                      local: "Local LLM is off: " + (s.local.reason || ""), jev: "Jev is off: " + (s.jev_reason || "add TYPESAFE_API_KEY to .env") });
   $("docs").innerHTML = s.documents.length
-    ? s.documents.map(d => `<div class="doc"><span title="${esc(d.name)}">${esc(d.name)} · ${d.chunks}</span>
+    ? s.documents.map(d => `<div class="doc" data-name="${esc(d.name)}"><span title="${esc(d.name)}">${esc(d.name)} · ${d.chunks}</span>
         <button title="Remove" onclick="removeDoc('${d.doc_id}')">×</button></div>`).join("")
     : '<div class="placeholder">No documents yet.</div>';
 }
@@ -235,7 +395,7 @@ function busyFlow(flowId) { resetFlow(); document.querySelectorAll(`#${flowId} .
 async function lightFlow(steps) {
   resetFlow();
   for (const s of steps) {
-    const node = document.querySelector(`.node[data-s="${s.step === "generate_local" ? "generate" : s.step}"]`);
+    const node = document.querySelector(`.node[data-s="${/^generate_/.test(s.step) ? "generate" : s.step}"]`);
     if (node) { node.classList.add("lit"); await new Promise(r => setTimeout(r, 180)); }
   }
 }
@@ -257,22 +417,31 @@ function stepDetails(s) {
                     <div class="bar"><i style="width:${Math.max(0, h.score) * 100}%"></i></div><pre>${esc(h.text)}</pre></div>`).join("");
     case "augment": return kv({ "prompt length": s.prompt_chars.toLocaleString() + " chars" }) +
                   `<pre><b>SYSTEM</b>\n${esc(s.system)}</pre><pre><b>USER</b>\n${esc(s.prompt)}</pre>`;
+    case "condense": return kv({ model: s.model, "turns used": s.turns, original: s.original, rewritten: s.rewritten });
+    case "mentions": return kv({ entity: s.entity, "passages naming it": s.total, "sent to the LLM": s.used, books: s.docs.join(", ") });
+    case "verify": return kv({ facts: s.counts.fact, "suppositions [[ ]]": s.counts.guess, removed: s.counts.drop,
+                    thresholds: `fact ≥ ${s.thresholds.fact} · guess ≥ ${s.thresholds.guess}`, cost: s.usage ? "$" + s.usage.cost_usd.toFixed(6) : "-" }) +
+                  s.claims.map(c => `<pre>${({ fact: "✓", guess: "[[ ]]", drop: "✗" })[c.status]} ${c.supported == null ? "no citation" : `support ${c.supported.toFixed(2)} · fact ${c.factual.toFixed(2)}`} · ${esc(c.sentence)}</pre>`).join("");
+    case "fallback": return kv({ reason: s.reason });
+    case "generate_gemini":
     case "generate": return kv(Object.assign({ model: s.model }, s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens, cost: "$" + s.usage.cost_usd.toFixed(4) } : {}));
     case "generate_local": return kv(Object.assign({ model: s.model }, s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens, cost: "$0 (your GPU)", "model load": s.usage.load_ms > 50 ? s.usage.load_ms + " ms (cold start)" : "already loaded" } : {}));
     case "select": return kv(Object.assign({ model: s.model || "(disabled)", "candidate sentences": s.candidates },
                     s.answerable !== null ? { "answerable (Noul)": s.answerable.toFixed(3), "choice confidence": s.confidence.toFixed(3),
                       decision: s.abstained ? "abstain: 'Not in the documents.'" : "answer with the picked sentence" } : {},
-                    s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens } : {})) +
+                    s.usage ? { "input tokens": s.usage.input_tokens, "output tokens": s.usage.output_tokens,
+                      "est. cost": "$" + (s.usage.cost_usd ?? 0).toFixed(6) + " (input @ $0.042/MTok)" } : {})) +
                   (s.picked ? `<pre>picked: ${esc(s.picked)}</pre>` : "");
   }
   return "";
 }
 
 function renderTrace(steps, title) {
+  if (document.body.classList.contains("hide-right")) $("toggleRight").classList.add("unseen");
   const total = steps.reduce((a, s) => a + s.ms, 0);
   $("trace").innerHTML = `<div class="hint" style="margin-bottom:8px">${esc(title)} · total ${total.toFixed(0)} ms</div>` +
     steps.map((s, i) => {
-      const [name, kind, explain] = STEP_INFO[s.step];
+      const [name, kind, explain] = STEP_INFO[s.step] || [s.step, "query", ""];
       return `<details class="step ${kind}" ${s.step === "retrieve" ? "open" : ""}>
         <summary><span><span class="n">${i + 1}</span>${name}</span><span class="ms">${s.ms} ms</span></summary>
         <div class="body"><p class="explain">${explain}</p>${stepDetails(s)}</div></details>`;
@@ -310,20 +479,78 @@ async function upload(files) {
 }
 
 // ---- ask ----
+// Follow new content only while the reader is at the bottom: scrolling up to read stays put.
+let stick = true;
+$("messages").addEventListener("scroll", () => {
+  const m = $("messages");
+  stick = m.scrollHeight - m.scrollTop - m.clientHeight < 80;
+});
+function follow() { if (stick) $("messages").scrollTop = $("messages").scrollHeight; }
+
 function addMsg(cls, html) {
   $("emptyState")?.remove();
   const div = document.createElement("div");
   div.className = "msg " + cls;
   div.innerHTML = html;
-  $("messages").appendChild(div);
-  $("messages").scrollTop = $("messages").scrollHeight;
+  $("thread").appendChild(div);
+  stick = true; follow();
   return div;
+}
+
+let asked = 0;
+// This chat's turns, sent with each question so follow-ups ("e come muore?") are understood.
+let history = [];
+const EMPTY_STATE = $("emptyState").outerHTML;
+function newChat() {
+  $("thread").innerHTML = EMPTY_STATE;
+  asked = 0;
+  history = [];
+  $("chatSub").textContent = "Ask anything about your library";
+  $("clearBtn").classList.remove("nudge");
+  clearDocHits();
+  $("question").focus();
+}
+$("clearBtn").onclick = newChat;
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newChat(); }
+});
+// Example questions in the empty state fill and send the composer.
+$("thread").addEventListener("click", (e) => {
+  const b = e.target.closest(".suggest button");
+  if (!b) return;
+  $("question").value = b.textContent;
+  $("ask").requestSubmit();
+});
+
+// Side panels: Library (left) and Pipeline (right) fold away to give the chat room.
+function setPanel(side, open) {
+  document.body.classList.toggle("hide-" + side, !open);
+  const t = $(side === "left" ? "toggleLeft" : "toggleRight");
+  t.setAttribute("aria-pressed", String(open));
+  if (open) t.classList.remove("unseen");
+  try { localStorage.setItem("panel-" + side, open ? "1" : "0"); } catch {}
+}
+for (const side of ["left", "right"]) {
+  let saved = null;
+  try { saved = localStorage.getItem("panel-" + side); } catch {}
+  if (saved !== null) setPanel(side, saved === "1");
+  $(side === "left" ? "toggleLeft" : "toggleRight").onclick = () =>
+    setPanel(side, document.body.classList.contains("hide-" + side));
+}
+function clearDocHits() { document.querySelectorAll(".doc.hit").forEach(n => n.classList.remove("hit")); }
+function highlightDocHits(sources) {
+  clearDocHits();
+  for (const s of sources) {
+    const el = document.querySelector('.doc[data-name="' + CSS.escape(s.doc_name) + '"]');
+    if (el) el.classList.add("hit");
+  }
 }
 
 let engines = ["claude"], firstStatus = true;
 // Grey out engines that can't run; on first load, select every engine that can.
 function applyAvailability(available, reasons) {
   document.querySelectorAll("#modes button").forEach(b => {
+    if (!b.dataset.engine) return;  // New chat and other non-engine controls
     const ok = available[b.dataset.engine];
     b.disabled = !ok;
     b.title = ok ? "" : reasons[b.dataset.engine];
@@ -331,25 +558,48 @@ function applyAvailability(available, reasons) {
     else if (firstStatus) b.classList.add("active");
   });
   firstStatus = false;
+  const off = Object.entries(available).filter(([, ok]) => !ok).map(([key]) => reasons[key]);
+  $("engHints").textContent = off.join("  ·  ");
   const active = [...document.querySelectorAll("#modes button.active")].map(x => x.dataset.engine);
   engines = active.length ? active : ["claude"];  // nothing available: Claude explains how to enable it
 }
-document.querySelectorAll("#modes button").forEach(b => b.onclick = () => {
-  const on = !b.classList.contains("active");
-  if (!on && document.querySelectorAll("#modes button.active").length === 1) return; // keep at least one
-  b.classList.toggle("active", on);
-  engines = [...document.querySelectorAll("#modes button.active")].map(x => x.dataset.engine);
+document.querySelectorAll("#modes button").forEach(b => {
+  if (!b.dataset.engine) return;  // New chat and other non-engine controls
+  b.onclick = () => {
+    const on = !b.classList.contains("active");
+    if (!on && document.querySelectorAll("#modes button.active").length === 1) return; // keep at least one
+    b.classList.toggle("active", on);
+    engines = [...document.querySelectorAll("#modes button.active")].map(x => x.dataset.engine);
+  };
 });
 
-const ENGINE = { claude: "Claude · generate", local: "Local LLM · generate", jev: "Jev · select" };
-const COLOR = { claude: "query", local: "local", jev: "jev" };
+const ENGINE = { claude: "Claude · generate", gemini: "Flash · generate", local: "Local LLM · generate", jev: "Jev · select" };
+const COLOR = { claude: "claude", gemini: "gemini", local: "local", jev: "jev" };
 const cite = (text) => esc(text).replace(/\[(\d+)\]/g, '<span class="cite">[$1]</span>');
+// Light markdown for final answers: paragraphs, "- " / "* " bullets, **bold**, *italic*, [n] cites.
+function md(text) {
+  const inline = (t) => cite(t).replace(/\[\[(.+?)\]\]/g, '<span class="guess" title="Supposition: only partly supported by the passages, or a character\'s guess">[[$1]]</span>').replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|\W)\*(?!\s)(.+?)\*(?=\W|$)/g, "$1<i>$2</i>");
+  return text.trim().split(/\n{2,}/).map(block => {
+    const lines = block.split("\n");
+    if (lines.every(l => /^\s*[-*•]\s+/.test(l)))
+      return "<ul>" + lines.map(l => "<li>" + inline(l.replace(/^\s*[-*•]\s+/, "")) + "</li>").join("") + "</ul>";
+    return "<p>" + lines.map(inline).join("<br>") + "</p>";
+  }).join("");
+}
 
-function answerCard(a) {
-  const meta = a.engine === "jev" && a.answerable != null
-    ? `answerable p=${a.answerable.toFixed(2)} · confidence ${a.confidence.toFixed(2)}`
-    : a.usage && a.usage.cost_usd != null ? `${a.usage.input_tokens}+${a.usage.output_tokens} tokens · ${a.engine === "local" ? "free (your GPU)" : "$" + a.usage.cost_usd.toFixed(4)}` : "";
-  return `<div class="card ${a.engine}"><div class="who">${ENGINE[a.engine] || a.engine}<span>${a.ms != null ? Math.round(a.ms) + " ms" : ""}</span></div>${cite(a.answer)}${meta ? `<div class="meta">${meta}</div>` : ""}</div>`;
+function answerMeta(a) {
+  const cost = a.usage && a.usage.cost_usd != null ? a.usage.cost_usd : null;
+  if (a.engine === "jev" && a.mode === "verified")
+    return (a.quote ? `quote: answerable p=${a.answerable.toFixed(2)} · confidence ${a.confidence.toFixed(2)}<br>` : "") +
+      `detailed answer: ${a.verified.split("/")[0]} facts confirmed by Jev` +
+      (a.guesses ? ` · ${a.guesses} supposition${a.guesses > 1 ? "s" : ""} in [[ ]]` : "") +
+      (a.dropped ? ` · ${a.dropped} removed` : "") +
+      (cost != null ? ` · LLM + Jev ~$${cost.toFixed(4)}` : "") +
+      (a.cited && a.cited.length ? `<br>cited: ${a.cited.map(c => `[${c.n}] ${esc(c.doc_name)} ${c.chunk_index != null ? "#" + c.chunk_index : "· card"}`).join(" · ")}` : "");
+  if (a.engine === "jev" && a.answerable != null)
+    return `answerable p=${a.answerable.toFixed(2)} · confidence ${a.confidence.toFixed(2)}` + (cost != null ? ` · ~$${cost.toFixed(4)}` : "");
+  if (cost == null) return "";
+  return `${a.usage.input_tokens}+${a.usage.output_tokens} tokens · ${a.engine === "local" ? "free (your GPU)" : "$" + cost.toFixed(4)}`;
 }
 
 function race(answers) {
@@ -361,33 +611,138 @@ function race(answers) {
   return `<div class="race">Answer-step time (retrieval is shared)${lanes}<div class="speedup">${name(fast)} was ${vs}</div></div>`;
 }
 
+// One card per engine, filled as /api/ask/stream events arrive: Flash's tokens, Jev's draft
+// sentence by sentence (grey until Jev checks it; struck out and removed if unsupported),
+// then each final answer.
+function streamView(pending, answers = []) {
+  const cards = {};
+  let footer = null;
+  const part = (engine, sel) => cards[engine].querySelector(sel);
+  const finish = (a) => {
+    const card = cards[a.engine];
+    if (!card) { pending.innerHTML = md(a.answer); return; }
+    // Jev with a checked draft: its verbatim quote on top, the detailed answer below.
+    part(a.engine, ".text").innerHTML = a.quote && a.mode === "verified"
+      ? `<blockquote class="quote">${md(a.quote)}</blockquote><div class="label">Detailed answer · checked by Jev</div>${md(a.answer)}`
+      : md(a.answer);
+    part(a.engine, ".meta").innerHTML = answerMeta(a);
+    part(a.engine, ".ms").textContent = a.ms != null ? Math.round(a.ms) + " ms" : "";
+  };
+  return (e) => {
+    switch (e.type) {
+      case "sources": {
+        highlightDocHits(e.sources);
+        pending.className = "duo";
+        pending.innerHTML = "";
+        const grid = document.createElement("div");
+        grid.className = "duo-grid" + (e.engines.length > 1 ? " multi" : "");
+        pending.appendChild(grid);
+        for (const engine of e.engines) {
+          const card = cards[engine] = document.createElement("div");
+          card.className = "card " + engine;
+          card.innerHTML = `<div class="who">${ENGINE[engine] || engine}<span class="ms"><i>working…</i></span></div><div class="text">` +
+            (engine === "jev" ? '<blockquote class="quote" hidden></blockquote><div class="label" hidden>Detailed answer · checked by Jev</div><span class="draft"></span><span class="tail"></span>' : "") +
+            `</div><div class="meta"></div>`;
+          grid.appendChild(card);
+        }
+        const src = e.sources.map(s => `[${s.n}] ${esc(s.doc_name)} ${s.chunk_index != null ? "#" + s.chunk_index : "· card"} (${s.score.toFixed(2)})`).join(" · ");
+        footer = document.createElement("div");
+        footer.className = "race";
+        footer.innerHTML = src ? `<details class="srcs"><summary>${e.sources.length} retrieved passages</summary><div class="list">${src}</div></details>` : "";
+        pending.appendChild(footer);
+        break;
+      }
+      case "condensed":
+        pending.previousElementSibling?.insertAdjacentHTML("beforeend", `<div class="understood">↳ intesa come: ${esc(e.question)}</div>`);
+        break;
+      case "delta": part(e.engine, ".text").textContent += e.text; break;
+      case "draft_start":
+        part(e.engine, ".label").hidden = false;
+        part(e.engine, ".meta").textContent = e.entity
+          ? `Writing a detailed answer from the ${e.passages} passages naming ${e.entity}; Jev checks each sentence as it's written…`
+          : `Writing a detailed answer from ${e.passages} retrieved passages and book cards; Jev checks each sentence as it's written…`;
+        break;
+      case "jev_quote": {
+        const q = part(e.engine, ".quote");
+        q.innerHTML = md(e.text);
+        q.hidden = false;
+        part(e.engine, ".ms").innerHTML = `quote ${Math.round(e.ms)} ms · <i>detailing</i>`;
+        break;
+      }
+      case "jev_abstained":
+        part(e.engine, ".meta").textContent = `No single sentence answers it (p=${e.answerable.toFixed(2)}, confidence ${e.confidence.toFixed(2)}): keeping only the draft sentences Jev confirms…`;
+        break;
+      case "draft_sentence": {
+        const span = document.createElement("span");
+        span.className = "s pending";
+        span.dataset.i = e.i;
+        span.innerHTML = cite(e.text) + (e.ends_line ? "\n" : " ");
+        part(e.engine, ".draft").appendChild(span);
+        break;
+      }
+      case "draft_tail": { const tail = part(e.engine, ".tail"); if (tail) tail.textContent = e.text; break; }
+      case "verdict": {
+        const span = part(e.engine, `.s[data-i="${e.i}"]`);
+        if (!span) break;
+        span.className = "s " + ({ fact: "ok", guess: "ok", drop: "bad" })[e.status];
+        span.title = e.supported == null ? "no citation: can't be checked"
+          : `Jev: supported p=${e.supported.toFixed(2)}, stated as fact p=${e.factual.toFixed(2)}`;
+        if (e.status === "guess") span.innerHTML = md(e.text).replace(/^<p>|<\/p>$/g, "") + " ";  // rewritten as [[...]]
+        if (e.status === "drop") setTimeout(() => span.remove(), 1500);  // let the strike-through be seen, then delete
+        break;
+      }
+      case "answer":
+        answers.push(e.answer);
+        // A checked draft replaces itself once the last struck-out sentence has gone.
+        if (e.answer.mode === "verified") setTimeout(() => finish(e.answer), 1600); else finish(e.answer);
+        break;
+      case "done": {
+        const timed = answers.filter(a => a.usage && a.ms != null);
+        if (timed.length > 1 && footer) footer.insertAdjacentHTML("afterbegin", race(timed));
+        asked += 1;
+        $("chatSub").textContent = `${asked} question${asked > 1 ? "s" : ""} · context on — Ctrl K to forget it`;
+        if (asked === 1) $("clearBtn").classList.add("nudge");  // show where a fresh start is
+        break;
+      }
+    }
+  };
+}
+
 $("ask").onsubmit = async (e) => {
   e.preventDefault();
   const q = $("question").value.trim();
   if (!q) return;
+  clearDocHits();
   $("question").value = "";
   $("askBtn").disabled = true;
   addMsg("user", esc(q));
-  const pending = addMsg("bot", "<i>Thinking…</i>");
+  const pending = addMsg("bot", "Searching your library…");
   busyFlow("flowQuery");
   try {
-    const res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, top_k: +$("topK").value, engines }) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || res.statusText);
-    const src = data.sources.map(s => `[${s.n}] ${esc(s.doc_name)} #${s.chunk_index} (${s.score.toFixed(2)})`).join(" · ");
-    const srcHtml = src ? `<div class="sources">${src}</div>` : "";
-    const a0 = data.answers[0];
-    if (data.answers.length > 1) {
-      pending.className = "duo";
-      pending.innerHTML = data.answers.map(answerCard).join("") + (data.answers.filter(a => a.usage).length > 1 ? race(data.answers.filter(a => a.usage)) : "") + `<div class="race">${srcHtml}</div>`;
-    } else if (a0.ms != null) {
-      pending.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">${ENGINE[a0.engine]} · ${Math.round(a0.ms)} ms</div>` + cite(a0.answer) + srcHtml;
-    } else {
-      pending.innerHTML = cite(a0.answer) + srcHtml;
+    const res = await fetch("/api/ask/stream", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, top_k: +$("topK").value, engines, history: history.slice(-20) }) });
+    if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.detail || res.statusText); }
+    const answers = [];
+    const handle = streamView(pending, answers);
+    const reader = res.body.getReader(), decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        handle(ev);
+        if (ev.type === "done") { renderTrace(ev.trace, "Query: " + q); lightFlow(ev.trace); }
+        follow();
+      }
     }
-    renderTrace(data.trace, "Query: " + q);
-    lightFlow(data.trace);
+    // Remember the turn: Jev's checked answer if any, else the first answer that didn't abstain.
+    const best = answers.find(a => a.engine === "jev" && a.mode === "verified") || answers.find(a => !a.abstained) || answers[0];
+    if (best) history.push({ q, a: best.answer });
   } catch (err) { pending.textContent = "Error: " + err.message; resetFlow(); }
   $("askBtn").disabled = false;
   $("question").focus();

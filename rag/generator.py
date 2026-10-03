@@ -20,7 +20,10 @@ _ABSTAIN_MARKERS = (ABSTAIN_PREFIX.lower(), "does not specify", "does not mentio
 SYSTEM_PROMPT = f"""You answer questions using only the numbered context passages provided.
 - Cite passages inline like [1] or [2][3] right after the facts they support.
 - If the context does not contain the answer, begin your reply with "{ABSTAIN_PREFIX}" and do not guess.
-- Be concise."""
+- Answer in detail: give the direct answer first, then the relevant facts, context and
+  examples the passages contain (who, what, when, why), in a few short paragraphs or a list.
+  Use everything relevant in the passages, but add nothing they don't say.
+- Answer in the same language as the question."""
 
 
 def llm_enabled() -> bool:
@@ -55,7 +58,7 @@ def generate(prompt: str) -> dict:
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=1024,
+            max_tokens=1500,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )

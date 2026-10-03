@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import app  # noqa: F401  (loads .env before the SDK clients are created)
-from rag import generator, jev, local_llm, pipeline
+from rag import generator, gemini_llm, jev, local_llm, pipeline
 
 ROOT = Path(__file__).resolve().parent
 SQUAD_FILE = ROOT / "datasets" / "squad-dev-v2.0.json"
@@ -135,8 +135,8 @@ def main():
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--dry-run", action="store_true", help="no API calls: dataset, ingest and retrieval only")
     args = ap.parse_args()
-    enabled = {"claude": generator.llm_enabled(), "local": local_llm.local_status()["enabled"],
-               "jev": jev.jev_enabled()}
+    enabled = {"claude": generator.llm_enabled(), "gemini": gemini_llm.gemini_enabled(),
+               "local": local_llm.local_status()["enabled"], "jev": jev.jev_enabled()}
     engines = [e for e in args.engines.split(",") if e] or [e for e, on in enabled.items() if on]
     if not engines and not args.dry_run:
         raise SystemExit("No engine is enabled. Start Ollama, add TYPESAFE_API_KEY, or enable Claude in .env.")

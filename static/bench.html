@@ -70,8 +70,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (x) => x == null ? "–" : Math.round(x * 100) + "%";
 const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + " s" : Math.round(ms) + " ms";
-const NAME = { claude: "Claude · generate", local: "Local LLM · generate", jev: "Jev · select" };
-const SHORT = { claude: "Claude", local: "local LLM", jev: "Jev" };
+const NAME = { claude: "Claude · generate", gemini: "Flash · generate", local: "Local LLM · generate", jev: "Jev · select" };
+const SHORT = { claude: "Claude", gemini: "Flash", local: "local LLM", jev: "Jev" };
 const SVGNS = "http://www.w3.org/2000/svg";
 let data, rowFilter = "all";
 

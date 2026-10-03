@@ -6,6 +6,7 @@ Uses the same system prompt and context format as the Claude generator, so
 the engines are directly comparable. `chat()` is the low-level call reused
 by the summarizer, which needs a different system prompt.
 """
+import json
 import os
 
 import requests
@@ -15,6 +16,10 @@ from . import generator
 MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
 PRICE_PER_MTOK = {"input": 0.10, "output": 0.40}  # MODEL's price; only a fallback, see chat()
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# The RAG answer (generate) runs with thinking off: deepseek-v4-flash then shows its first words
+# after ~1.5 s instead of ~13 s, at half the cost, with answers as good on cited-passage QA.
+# FLASH_REASONING=1 in .env turns it back on.
+FLASH_REASONING = os.environ.get("FLASH_REASONING", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def gemini_enabled() -> bool:
@@ -22,7 +27,7 @@ def gemini_enabled() -> bool:
 
 
 def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout: int = 60,
-         frequency_penalty: float = 0.0, model: str | None = None) -> dict:
+         frequency_penalty: float = 0.0, model: str | None = None, reasoning: bool | None = None) -> dict:
     """One request/response. Returns {answer, model, usage} or {answer, error: True}.
 
     max_tokens is a hard cap, not a default to leave unset: without one, a
@@ -53,6 +58,7 @@ def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout:
                 "temperature": 0,
                 "frequency_penalty": frequency_penalty,
                 "max_tokens": max_tokens,
+                **({"reasoning": {"enabled": reasoning}} if reasoning is not None else {}),
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
@@ -88,8 +94,67 @@ def chat(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout:
     }
 
 
+def chat_stream(system_prompt: str, user_content: str, max_tokens: int = 1024, timeout: int = 60,
+                model: str | None = None, cancel=None, reasoning: bool | None = None):
+    """chat() as a stream: yields ("delta", text) as tokens arrive, then one ("done", result)
+    with result shaped like chat()'s. cancel: optional threading.Event; when set, the stream
+    is closed and the result is an error ("cancelled"). reasoning=False turns off thinking
+    for models that think by default: ling-3.0-flash then shows its first words after ~1.4 s
+    instead of ~3.6 s (it reasons silently first, and that time is all the user sees)."""
+    if not gemini_enabled():
+        yield "done", {"answer": "Gemini is disabled: add OPENROUTER_API_KEY to .env.",
+                       "model": None, "usage": None, "error": True}
+        return
+    parts, usage, used_model = [], {}, model or MODEL
+    try:
+        with requests.post(
+            API_URL,
+            headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
+            json={"model": model or MODEL, "usage": {"include": True}, "temperature": 0, "stream": True,
+                  "max_tokens": max_tokens,
+                  **({"reasoning": {"enabled": reasoning}} if reasoning is not None else {}),
+                  "messages": [{"role": "system", "content": system_prompt},
+                               {"role": "user", "content": user_content}]},
+            timeout=timeout, stream=True,
+        ) as response:
+            response.raise_for_status()
+            response.encoding = "utf-8"  # SSE has no charset: requests would assume Latin-1
+            for line in response.iter_lines(decode_unicode=True):
+                if cancel is not None and cancel.is_set():
+                    yield "done", {"answer": "cancelled", "model": None, "usage": None, "error": True}
+                    return
+                # SSE: "data: {...}" events; ": OPENROUTER PROCESSING" keep-alive comments.
+                if not line or not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                data = json.loads(line[6:])
+                if "error" in data:
+                    yield "done", {"answer": f"OpenRouter error: {data['error'].get('message', data['error'])}",
+                                   "model": None, "usage": None, "error": True}
+                    return
+                used_model = data.get("model", used_model)
+                usage = data.get("usage") or usage  # sent on the last chunk
+                for choice in data.get("choices", []):
+                    text = (choice.get("delta") or {}).get("content")
+                    if text:
+                        parts.append(text)
+                        yield "delta", text
+    except (requests.RequestException, ValueError) as e:
+        yield "done", {"answer": f"OpenRouter error: {e}", "model": None, "usage": None, "error": True}
+        return
+    answer = "".join(parts).strip()
+    if not answer:
+        yield "done", {"answer": "OpenRouter returned an empty answer.", "model": None, "usage": None, "error": True}
+        return
+    input_tokens, output_tokens = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    cost = usage.get("cost")
+    if cost is None:
+        cost = (input_tokens * PRICE_PER_MTOK["input"] + output_tokens * PRICE_PER_MTOK["output"]) / 1e6
+    yield "done", {"answer": answer, "model": used_model, "error": False,
+                   "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens, "cost_usd": round(cost, 6)}}
+
+
 def generate(prompt: str) -> dict:
-    result = chat(generator.SYSTEM_PROMPT, prompt)
+    result = chat(generator.SYSTEM_PROMPT, prompt, max_tokens=1500, reasoning=FLASH_REASONING)
     if result["error"]:
         return {"answer": result["answer"], "abstained": None, "model": None, "usage": None}
     return {

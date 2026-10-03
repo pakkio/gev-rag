@@ -55,7 +55,7 @@ def chat(system_prompt: str, user_content: str, num_ctx: int = 8192, max_tokens:
 
 
 def generate(prompt: str) -> dict:
-    result = chat(generator.SYSTEM_PROMPT, prompt)
+    result = chat(generator.SYSTEM_PROMPT, prompt, max_tokens=1500)
     if result["error"]:
         return {"answer": result["answer"], "abstained": None, "model": None, "usage": None}
     return {"answer": result["answer"], "abstained": generator.is_abstained(result["answer"]),
